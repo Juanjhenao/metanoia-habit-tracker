@@ -1,86 +1,88 @@
 # Metanoia — Habit Tracker
 
-**App de hábitos, trabajo y tareas del hogar para toda la casa.** Corre en un PC de la red local, cada persona entra desde su móvil como una app instalable (PWA), los cambios se ven en vivo en todos los dispositivos, y las notificaciones llegan aunque la app esté cerrada.
+**A habit, work and household-chores app for the whole home.** It runs on one PC on the local network; each person opens it from their phone as an installable app (PWA), changes show up live on every device, and push notifications arrive even when the app is closed.
 
 ![Node.js](https://img.shields.io/badge/Node.js-Express_4-339933?logo=node.js&logoColor=white)
 ![JavaScript](https://img.shields.io/badge/JavaScript-vanilla-F7DF1E?logo=javascript&logoColor=black)
 ![PWA](https://img.shields.io/badge/PWA-Web_Push-5A0FC8?logo=pwa&logoColor=white)
 
-![Recorrido por Metanoia con datos de ejemplo](docs/demo.gif)
+![Tour of Metanoia with sample data](docs/demo.gif)
 
-*Una casa ficticia de tres personas: cerrar el día perfecto, Work Mode, tareas del hogar, historial y la escalera de rangos.*
+*A fictional three-person household: closing out a perfect day, Work Mode, chores, history and the rank ladder.*
+
+> **Language note:** built for a Spanish-speaking household, so the UI and code comments are in Spanish. This README and the code identifiers are the entry point for English readers.
 
 ---
 
-## Funcionalidades
+## Features
 
-- **Hábitos** con pauta por días de la semana, rachas, heatmap anual, calendario, estadísticas por hábito, logros y el reto de 30 días perfectos.
-- **Progresión competitiva**: XP y niveles, un sistema de rangos por divisiones (Hierro I → Radiante) y una liga entre las personas de la casa.
-- **Retos compartidos** entre miembros, con tablón de hábitos públicos.
-- **Work Mode**: tareas con prioridad, pasos que guían el proceso, bitácora de avance y recompensa por cerrar a tiempo.
-- **Casa**: personas, tareas del hogar, asignación y horarios.
-- **Notas** de texto enriquecido con fuentes, colores, resaltado, etiquetas e imágenes pegadas.
-- **Perfiles con contraseña opcional** y sesiones por dispositivo.
-- **Recordatorios y avisos push** con la app cerrada.
-- **Sonido sintetizado** con Web Audio (sin archivos de audio) y animaciones que respetan `prefers-reduced-motion`.
+- **Habits** with weekday schedules, streaks, a yearly heatmap, calendar, per-habit stats, achievements and a 30-perfect-days challenge.
+- **Competitive progression**: XP and levels, a divisioned rank system (Iron I → Radiant) and a league between household members.
+- **Shared challenges** between members, with a board of public habits.
+- **Work Mode**: prioritized tasks, step-by-step guides, a progress log and rewards for finishing on time.
+- **Home**: members, chores, assignments and schedules.
+- **Rich-text notes** with fonts, colors, highlighting, tags and pasted images.
+- **Profiles with optional passwords** and per-device sessions.
+- **Reminders and push notifications** while the app is closed.
+- **Synthesized sound** with Web Audio (no audio files) and animations that honor `prefers-reduced-motion`.
 
-## Stack
+## Tech stack
 
-| Capa | Tecnología |
+| Layer | Technology |
 |---|---|
-| Servidor | Node.js, Express 4, módulos nativos `https`, `crypto` |
-| Notificaciones | `web-push` (VAPID) y Service Worker |
-| Tiempo real | Server-Sent Events |
-| Frontend | JavaScript vanilla sin framework ni build; SVG y Web Audio API |
-| Instalación | PWA (manifest + service worker) |
-| Seguridad | Autoridad certificadora propia con OpenSSL, `scrypt` con sal por usuario |
-| Persistencia | JSON con escritura atómica y migraciones de esquema versionadas |
+| Server | Node.js, Express 4, native `https` and `crypto` modules |
+| Notifications | `web-push` (VAPID) and a Service Worker |
+| Real time | Server-Sent Events |
+| Frontend | Vanilla JavaScript, no framework or build step; SVG and the Web Audio API |
+| Install | PWA (manifest + service worker) |
+| Security | Self-hosted certificate authority via OpenSSL, per-user salted `scrypt` |
+| Persistence | JSON with atomic writes and versioned schema migrations |
 
-## Aspectos técnicos destacados
+## Technical highlights
 
-### 1. HTTPS en la red de casa con autoridad certificadora propia
-Los service workers y las notificaciones push exigen contexto seguro, y `http://192.168.x.x` no lo es. Un certificado autofirmado no basta: el navegador deja ver la página tras el aviso, pero **se niega a registrar el service worker** y las notificaciones fallan en silencio. La solución son dos certificados: una CA de la casa que cada dispositivo instala una vez, y un certificado de servidor firmado por ella con las direcciones de la red como SAN. Cuando cambia la IP, se vuelve a firmar el del servidor y nadie reinstala nada. Un segundo puerto HTTP solo redirige. → [`crear-cert.js`](crear-cert.js), [`confiar.js`](confiar.js)
+### 1. HTTPS on a home network with a self-hosted certificate authority
+Service workers and push notifications require a secure context, and `http://192.168.x.x` isn't one. A self-signed certificate isn't enough: the browser shows the page after the warning but **refuses to register the service worker**, so notifications fail silently. The fix is two certificates: a home CA that each device installs once, and a server certificate signed by it with the network addresses as SANs. When the IP changes, only the server certificate is re-signed and no device has to reinstall anything. A second HTTP port only redirects. → [`crear-cert.js`](crear-cert.js), [`confiar.js`](confiar.js)
 
-### 2. Notificaciones push de extremo a extremo
-Llaves VAPID generadas una vez y persistidas (si cambian, todas las suscripciones dejan de valer), suscripción por dispositivo, recordatorios programados desde el servidor y un service worker que muestra el aviso con la app cerrada. El service worker además le informa a la app cuándo un push entró al navegador, para distinguir "no llegó" de "llegó y el sistema operativo lo silenció": dos averías distintas que se arreglan en sitios distintos. Incluye un script de diagnóstico que controla un navegador por el protocolo DevTools para aislar la falla. → [`public/sw.js`](public/sw.js), [`entrega.js`](entrega.js)
+### 2. End-to-end push notifications
+VAPID keys are generated once and persisted (if they change, every existing subscription breaks), subscriptions are per device, reminders are scheduled server-side, and a service worker shows the notification with the app closed. The service worker also tells the app when a push reached the browser, which separates "it never arrived" from "it arrived and the OS silenced it" — two different failures fixed in two different places. Includes a diagnostic script that drives a browser over the DevTools protocol to isolate the fault. → [`public/sw.js`](public/sw.js), [`entrega.js`](entrega.js)
 
-### 3. Sincronización en vivo entre dispositivos con SSE
-Cada escritura se difunde a todos los clientes por Server-Sent Events: sin librerías, con reconexión automática del navegador. Un latido cada 25 s evita que el router dé la conexión por muerta, la cabecera `X-Accel-Buffering: no` impide que un proxy acumule los eventos, y cada cliente lleva un identificador para ignorar el eco de sus propios cambios.
+### 3. Live sync across devices with SSE
+Every write is broadcast to all clients over Server-Sent Events: no libraries, with the browser's built-in reconnection. A heartbeat every 25 s keeps home routers from dropping the idle connection, the `X-Accel-Buffering: no` header stops proxies from batching events, and each client carries an ID so it can ignore the echo of its own changes.
 
-### 4. Persistencia segura y evolución del esquema
-Los datos se escriben en un archivo temporal y se reemplazan con `rename` (atómico: un corte de luz no deja el archivo a medias). Tres migraciones encadenadas (v1 → v2 → v3) transforman datos antiguos al arrancar, dejando respaldo de cada versión previa. Las contraseñas se guardan como `scrypt` con sal propia y se comparan con `timingSafeEqual`. Una variable de entorno redirige los datos a otra carpeta, para que ninguna prueba toque los datos reales.
+### 4. Safe persistence and schema evolution
+Data is written to a temporary file and swapped in with `rename` (atomic: a power cut can't leave a half-written file). Three chained migrations (v1 → v2 → v3) upgrade old data on startup, keeping a backup of each previous version. Passwords are stored as salted `scrypt` hashes and compared with `timingSafeEqual`. An environment variable redirects data to another folder so no test ever touches real data.
 
-## Ejecutar
+## Getting started
 
-Requiere Node.js 18+ y OpenSSL en el `PATH`.
+Requires Node.js 18+ and OpenSSL on the `PATH`.
 
 ```bash
 npm install
-npm run cert       # crea la CA de la casa y el certificado del servidor (una vez)
-npm run confiar    # instala la CA en este equipo (Windows)
+npm run cert       # creates the home CA and the server certificate (once)
+npm run confiar    # installs the CA on this machine (Windows)
 npm start          # https://localhost:4173
 ```
 
-En los demás dispositivos se abre `https://<ip-del-pc>:4173`, se descarga la CA desde `/ca` y se instala una vez. Sin certificado el servidor arranca en HTTP y todo funciona salvo las notificaciones.
+Other devices open `https://<pc-ip>:4173`, download the CA from `/ca` and install it once. Without a certificate the server falls back to plain HTTP and everything works except notifications.
 
-| Variable | Uso |
+| Variable | Purpose |
 |---|---|
-| `PORT` | Puerto HTTPS (por defecto 4173). El de redirección HTTP es `PORT + 1` |
-| `OBSIDIAN_VAULT` | Carpeta raíz; los datos van en `<vault>/Habits/` (por defecto `~/Documents/Obsidian Vault`) |
-| `METANOIA_DATOS` | Carpeta de datos alternativa, la que usan las pruebas |
+| `PORT` | HTTPS port (default 4173). The HTTP redirect port is `PORT + 1` |
+| `OBSIDIAN_VAULT` | Root folder; data lives in `<vault>/Habits/` (default `~/Documents/Obsidian Vault`) |
+| `METANOIA_DATOS` | Alternative data folder, used by tests and demos |
 
-> La carpeta `cert/` contiene llaves privadas (de la CA, del servidor y VAPID) y está excluida del repositorio. Se regenera con `npm run cert`.
+> The `cert/` folder holds private keys (CA, server and VAPID) and is excluded from the repository. Regenerate it with `npm run cert`.
 
-## Estructura
+## Project structure
 
 ```
-server.js        API REST, SSE, push, sesiones, migraciones y arranque HTTPS
-crear-cert.js    CA propia + certificado del servidor con OpenSSL
-confiar.js       instala la CA en el almacén del usuario (certutil)
-entrega.js       diagnóstico del canal push con un navegador controlado
+server.js        REST API, SSE, push, sessions, migrations and HTTPS startup
+crear-cert.js    self-hosted CA + server certificate via OpenSSL
+confiar.js       installs the CA in the user certificate store (certutil)
+entrega.js       push-channel diagnostics with a controlled browser
 public/
-  app.js         SPA: vistas, cálculos de rachas/XP/rangos, editor de notas
-  sw.js          service worker de notificaciones
-  icons.js       iconografía SVG
-  manifest.json  instalación como PWA
+  app.js         SPA: views, streak/XP/rank calculations, notes editor
+  sw.js          notification service worker
+  icons.js       SVG iconography
+  manifest.json  PWA install manifest
 ```
