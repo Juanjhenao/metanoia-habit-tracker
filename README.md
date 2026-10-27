@@ -10,8 +10,6 @@
 
 *A fictional three-person household: closing out a perfect day, Work Mode, chores, history and the rank ladder.*
 
-> **Language note:** built for a Spanish-speaking household, so the UI and code comments are in Spanish. This README and the code identifiers are the entry point for English readers.
-
 ---
 
 ## Features
