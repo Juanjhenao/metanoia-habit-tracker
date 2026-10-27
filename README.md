@@ -6,6 +6,10 @@
 ![JavaScript](https://img.shields.io/badge/JavaScript-vanilla-F7DF1E?logo=javascript&logoColor=black)
 ![PWA](https://img.shields.io/badge/PWA-Web_Push-5A0FC8?logo=pwa&logoColor=white)
 
+![Recorrido por Metanoia con datos de ejemplo](docs/demo.gif)
+
+*Una casa ficticia de tres personas: cerrar el día perfecto, Work Mode, tareas del hogar, historial y la escalera de rangos.*
+
 ---
 
 ## Funcionalidades
