@@ -1,0 +1,16 @@
+{
+  "name": "habit-tracker",
+  "version": "1.0.0",
+  "private": true,
+  "description": "App local para marcar y llevar seguimiento de habitos diarios",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "cert": "node crear-cert.js",
+    "confiar": "node confiar.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "web-push": "^3.6.7"
+  }
+}

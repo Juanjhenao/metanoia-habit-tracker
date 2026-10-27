@@ -1,0 +1,5301 @@
+/* ==========================================================================
+   Hábitos — sistema visual
+   Base oscura (casi OLED) con superficies por capas, un color propio por
+   hábito y realce luminoso solo en el momento de completar. La regla es:
+   el color lo aporta el dato, no la decoración.
+   ========================================================================== */
+
+:root {
+  /* Superficies: negro puro abajo y grises neutros arriba. Sin nada de azul:
+     cada nivel se separa solo por luminosidad, no por tono ni por bordes duros. */
+  --bg: #000000;
+  --bg-elev: #070707;
+  --surface: #0e0e0e;
+  --surface-2: #151515;
+  --surface-3: #1d1d1d;
+  --border: #272727;
+  --border-strong: #383838;
+
+  /* Texto: 3 niveles. --text-faint solo para elementos no informativos.
+     Los tres pasan 4.5:1 sobre TODAS las superficies, incluida --surface-3,
+     que es la más clara. El valor anterior (#808086) se quedaba en 4.29:1
+     sobre ella: cumplía sobre --surface pero no sobre las tarjetas y chips
+     que van un escalón por encima. */
+  --text: #f4f4f5;
+  --text-dim: #a8a8ad;
+  --text-faint: #85858b;
+
+  --accent: #22c55e;
+  --accent-bright: #4ade80;
+  --accent-dim: rgba(34, 197, 94, 0.14);
+  --gold: #fbbf24;
+  --danger: #f43f5e;
+
+  /* Work Mode tiene su propio acento: rojo vivo. Es el único sitio de la app
+     donde el color no lo aporta el dato, y es a propósito — marca que estás en
+     otro modo, no en otra pestaña. */
+  --work: #ef4444;
+  --work-bright: #ff5f5f;
+  --work-deep: #b91c1c;
+  --work-dim: rgba(239, 68, 68, 0.13);
+
+  /* Color activo del hábito en curso; cada tarjeta lo sobreescribe. */
+  --habit: var(--accent);
+
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 16px;
+  --r-xl: 22px;
+  --r-full: 999px;
+
+  /* Cristal esmerilado: el lenguaje común de todos los botones. La superficie
+     es blanco translúcido (no un gris fijo) para que deje ver lo que hay
+     detrás, el borde superior claro simula el canto iluminado del vidrio y el
+     desenfoque hace el resto. Un solo juego de tokens = un solo botón. */
+  --glass-bg: rgba(255, 255, 255, 0.055);
+  --glass-bg-hover: rgba(255, 255, 255, 0.11);
+  --glass-bg-strong: rgba(255, 255, 255, 0.1);
+  --glass-border: rgba(255, 255, 255, 0.13);
+  --glass-border-hover: rgba(255, 255, 255, 0.24);
+  --glass-blur: blur(16px) saturate(170%);
+  --glass-shine: inset 0 1px 0 rgba(255, 255, 255, 0.16);
+  --glass-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.35);
+  --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.5);
+
+  --ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  /* Retardo al entrar en hover. Evita que la interfaz reaccione a cada roce
+     del cursor cuando solo estás cruzando la pantalla para llegar a otra cosa:
+     el efecto espera a que te quedes. Al salir no hay retardo, así que soltar
+     es inmediato — un hover que tarda en apagarse sí se siente pegajoso.
+     66ms: lo justo para filtrar el roce sin que se note la espera. */
+  --hover-delay: 66ms;
+
+  /* Altura única de las cápsulas de la barra superior: nivel, pestañas y
+     cartera. Es lo que les da una línea base común. */
+  --barra-alto: 40px;
+
+  /* Escala z: 10 contenido flotante, 20 barra, 30 popovers, 50 celebración. */
+  --z-bar: 20;
+  --z-pop: 30;
+  --z-celebrate: 50;
+
+  /* --------------------------------------------------------------------
+     Tipografía: dos voces
+     Akira Expanded es la de display —el nombre de la app y poco más—, y
+     Archivo (100–900) hace todo lo demás. Archivo es la que "engrosa" el
+     diseño: al tener recorrido de peso de verdad, la jerarquía se puede
+     construir con grosor y no solo con tamaño, que es lo que le faltaba a
+     Segoe UI Variable.
+     -------------------------------------------------------------------- */
+  --font-display: "Akira Expanded", "Archivo", "Arial Black", sans-serif;
+  --font: "Archivo", "Segoe UI Variable Display", "Segoe UI", -apple-system,
+    BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+  /* Las cifras van en Archivo con figuras tabulares: los contadores que se
+     animan no pueden bailar de ancho mientras suben. */
+  --font-num: "Archivo", "Segoe UI Variable Text", "Segoe UI", -apple-system, sans-serif;
+}
+
+/* Akira Expanded Demo está instalada en el sistema; se referencia con local()
+   en vez de copiar el .otf al proyecto, que es lo correcto con una demo.
+   OJO — la versión Demo tiene dos límites que deciden dónde puede usarse:
+     · no trae á é í ó ú ni ñ, así que en una app en español cualquier texto
+       corriente se partiría a media palabra con la fuente de respaldo;
+     · sus dígitos son proporcionales (el 1 y el 7 son más estrechos), así que
+       un contador animado bailaría de ancho al subir.
+   Por eso se reserva a rótulos cortos que no llevan acentos ni cifras. */
+@font-face {
+  font-family: "Akira Expanded";
+  src: local("Akira Expanded"), local("Akira Expanded Super Bold");
+  font-weight: 800;
+  font-display: swap;
+}
+
+* { box-sizing: border-box; }
+
+/* El [hidden] del navegador es `display:none` sin !important, así que
+   cualquier regla de autor con `display` explícito lo anula. Sin esto, los
+   paneles y el overlay de nivel se ven aunque estén marcados como ocultos. */
+[hidden] { display: none !important; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: var(--font);
+  /* Relativo, no 16px fijos: si el usuario ha subido el tamaño de texto del
+     navegador, la app crece con él. Todo el espaciado va en rem/em, así que la
+     maqueta escala entera en vez de romperse. */
+  font-size: 100%;
+  line-height: 1.55;
+  background-color: var(--bg);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+  /* Halo superior adaptativo: se abre con el progreso del día (--progreso) y
+     toma el color de lo que ya está hecho (--tinte-dia). Con el día a cero es
+     casi invisible; con el día completo llena la parte de arriba. Las dos
+     variables las escribe renderAmbiente(). */
+  background-image:
+    radial-gradient(1000px 420px at 50% -170px,
+      rgba(var(--tinte-dia, 34, 197, 94), calc(0.035 + var(--progreso, 0) * 0.1)),
+      transparent 70%);
+  background-attachment: fixed;
+  /* El cambio de fondo nunca es un salto: se va abriendo. */
+  transition: background-image 1.2s var(--ease);
+}
+
+/* --------------------------------------------------------------------------
+   Luz ambiental
+   Una mancha desenfocada por hábito completado hoy, del color de ese hábito.
+   Es material de fondo: detrás de todo, sin eventos y sin contorno legible.
+   -------------------------------------------------------------------------- */
+
+.ambiente {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+  /* Un contexto de composición propio: las luces se animan sin obligar a
+     recalcular ni repintar el contenido que tienen encima. */
+  contain: layout paint style;
+}
+
+/* El contenido va por encima de la luz; la barra ya tiene su propio z-index. */
+main { position: relative; z-index: 1; }
+
+/* Dos capas a propósito: el elemento se encarga de encenderse y apagarse
+   (opacidad, desenfoque y escala), y su ::before de la deriva lenta. Si
+   compartieran la propiedad `transform`, la animación pisaría a la transición
+   y la luz aparecería de golpe en vez de materializarse. */
+.luz {
+  position: absolute;
+  left: var(--luz-x);
+  top: var(--luz-y);
+  width: var(--luz-tam);
+  height: var(--luz-tam);
+  margin: calc(var(--luz-tam) / -2) 0 0 calc(var(--luz-tam) / -2);
+  /* El desenfoque es lo que la convierte en luz y no en un círculo de color. */
+  filter: blur(52px);
+  opacity: 0.5;
+  will-change: transform, opacity, filter;
+  transition:
+    opacity 0.9s var(--ease),
+    filter 0.9s var(--ease),
+    transform 0.9s var(--ease);
+}
+
+.luz::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: radial-gradient(circle closest-side,
+    color-mix(in srgb, var(--luz-color) 55%, transparent) 0%,
+    color-mix(in srgb, var(--luz-color) 22%, transparent) 45%,
+    transparent 100%);
+  /* Deriva muy lenta (36s por ciclo, lejos del rango de frecuencias que marea)
+     y muy corta: el fondo respira, no se mueve. */
+  animation: luz-deriva 36s ease-in-out infinite alternate;
+  animation-delay: var(--luz-fase, 0s);
+}
+
+/* Estado inicial de entrada y estado final de salida: el mismo, para que
+   encenderse y apagarse recorran el mismo camino. */
+.luz.entrando,
+.luz.saliendo {
+  opacity: 0;
+  filter: blur(120px);
+  transform: scale(0.72);
+}
+
+@keyframes luz-deriva {
+  from { transform: translate3d(-2.5%, 1.5%, 0) scale(1); }
+  to   { transform: translate3d(2.5%, -1.5%, 0) scale(1.08); }
+}
+
+h1, h2, h3, p { margin: 0; }
+
+.icon { display: block; flex-shrink: 0; }
+
+/* El interletraje depende del tamaño, no hay un valor bueno para todo: el texto
+   grande necesita apretarse (al crecer las letras se separan ópticamente) y el
+   pequeño necesita abrirse para leerse. Los titulares ya llevan su tracking
+   negativo en cada regla; aquí se abre el texto menudo, que es donde faltaba. */
+.tile-sub,
+.badge-desc,
+.badge-num,
+.hero-date,
+.ring-label,
+.level-xp,
+.nota-fecha,
+.heatmap-resumen,
+.hm-day,
+.hm-month,
+.bar-pct {
+  letter-spacing: 0.012em;
+}
+
+.num { font-family: var(--font-num); font-variant-numeric: tabular-nums; }
+
+:focus-visible {
+  outline: 2px solid var(--accent-bright);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* --------------------------------------------------------------------------
+   Área táctil
+   La guía pide 44x44 mínimo, pero agrandar visualmente estos botones rompería
+   la densidad de las listas (quitar un paso, cerrar una etiqueta). La solución
+   estándar es separar lo que se ve de lo que se pulsa: el botón conserva su
+   tamaño y un pseudo-elemento invisible extiende el área hasta 44x44.
+   -------------------------------------------------------------------------- */
+
+.wt-paso-x,
+.wt-log-x,
+.nota-tag-x,
+.nt-btn,
+.color-dot,
+.nota-destacar {
+  position: relative;
+}
+
+.wt-paso-x::after,
+.wt-log-x::after,
+.nota-tag-x::after,
+.nt-btn::after,
+.color-dot::after,
+.nota-destacar::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 44px;
+  height: 44px;
+  transform: translate(-50%, -50%);
+}
+
+/* En una fila de círculos de color pegados, un área de 44px por cada uno se
+   solaparía con la del vecino y se pulsaría el equivocado. Ahí manda el hueco
+   real que hay entre ellos. */
+.swatches { gap: 0.55rem; }
+.color-dot::after { width: 34px; height: 34px; }
+
+/* --------------------------------------------------------------------------
+   Barra superior
+   -------------------------------------------------------------------------- */
+
+/* Capa flotante translúcida con el contenido pasando por debajo, no una franja
+   opaca. El borde de 1px se ha sustituido por un degradado que solo aparece
+   cuando hay algo debajo de la barra: mientras la página está arriba del todo
+   no hay nada que separar, así que no se dibuja ninguna línea. */
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-bar);
+  background: rgba(0, 0, 0, 0.72);
+  -webkit-backdrop-filter: blur(22px) saturate(160%);
+  backdrop-filter: blur(22px) saturate(160%);
+  border-bottom: 1px solid transparent;
+  transition: border-color 0.3s var(--ease), background 0.3s var(--ease);
+}
+
+.topbar::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  height: 20px;
+  pointer-events: none;
+  background: linear-gradient(to bottom, rgba(0, 0, 0, 0.5), transparent);
+  opacity: 0;
+  transition: opacity 0.3s var(--ease);
+}
+
+.topbar.scrolled { border-bottom-color: var(--border); }
+.topbar.scrolled::after { opacity: 1; }
+
+/* La barra es una barra: ocupa el ancho de la ventana. Antes estaba capada a
+   los mismos 1000px que el texto del contenido, así que en pantalla ancha
+   quedaba estrujada en el centro con medio monitor vacío a los lados, y al no
+   caber sus cuatro bloques se partía en dos filas.
+   `nowrap` garantiza la línea única; lo que cede cuando falta sitio son las
+   pestañas, que pueden desplazarse dentro de su cápsula. */
+.topbar-inner {
+  max-width: 1600px;
+  margin: 0 auto;
+  padding: 0.7rem 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: nowrap;
+}
+
+/* Los tres bloques fijos de la barra no se encogen: el que cede es el de las
+   pestañas, que sabe desplazarse. */
+.brand,
+.level-chip,
+.cartera { flex-shrink: 0; }
+
+.brand { display: flex; align-items: center; gap: 0.55rem; }
+
+/* El logo trae su propio fondo y borde (es el mismo arte del acceso directo),
+   así que aquí solo se le da tamaño y el halo verde que lo separa del negro. */
+.brand-mark {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  filter: drop-shadow(0 2px 8px rgba(34, 197, 94, 0.3));
+}
+
+.brand-logo { display: block; }
+
+/* El logotipo, en Akira. Es el único texto largo que la lleva porque
+   "Metanoia" no tiene acentos ni eñe: cabe entero en la Demo.
+   Akira ya es ancha de por sí, así que va con tracking negativo y en un cuerpo
+   menor del que pediría otra fuente al mismo peso óptico. */
+.brand h1 {
+  font-family: var(--font-display);
+  font-size: 0.95rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  line-height: 1;
+  padding-top: 0.1em;   /* Akira se apoya alto: compensa el centrado óptico */
+}
+
+/* Chip de nivel: es el marcador de progreso permanente, siempre a la vista. */
+/* Fondo, borde y desenfoque salen del bloque de cristal común más abajo.
+   Las tres cápsulas de la barra —nivel, pestañas y cartera— comparten altura
+   para que se apoyen en la misma línea. Sin eso, cada una flota a su aire y la
+   barra se lee como tres piezas sueltas en vez de como una fila. */
+.level-chip {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  height: var(--barra-alto);
+  border-radius: var(--r-full);
+  padding: 0 0.85rem 0 0.25rem;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  transition: border-color 0.2s var(--ease), background 0.2s var(--ease);
+}
+
+.level-chip:hover { border-color: var(--glass-border-hover); background: var(--glass-bg-hover); }
+
+.level-badge {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: linear-gradient(140deg, var(--gold), #d97706);
+  color: #2a1a00;
+  font-size: 0.85rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
+/* Compacto: la medalla ya lleva el número del nivel escrito dentro, así que la
+   etiqueta "Nivel 4" repetía el dato y se llevaba 60px de una barra donde no
+   sobra ni uno. Queda la medalla, el XP y la barra de avance. */
+.level-meta { display: flex; flex-direction: column; gap: 4px; width: 66px; }
+
+/* Al ocultar "Nivel N", el `space-between` que repartía dos elementos dejó al
+   XP solo y pegado a la derecha, con un hueco muerto delante. Ahora el XP se
+   alinea a la izquierda, justo sobre el arranque de su propia barra. */
+.level-row { display: flex; align-items: baseline; gap: 0.4rem; }
+
+.level-label { display: none; }
+
+.level-xp {
+  font-size: 0.72rem;
+  font-weight: 650;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.xp-track {
+  height: 5px;
+  border-radius: var(--r-full);
+  background: var(--surface-3);
+  overflow: hidden;
+}
+
+.xp-fill {
+  display: block;
+  height: 100%;
+  width: 0%;
+  border-radius: var(--r-full);
+  background: linear-gradient(90deg, var(--gold), #fde68a);
+  transition: width 0.7s var(--ease);
+}
+
+.level-chip.bump { animation: chip-bump 0.5s var(--ease-spring); }
+
+@keyframes chip-bump {
+  0% { transform: scale(1); }
+  35% { transform: scale(1.05); }
+  100% { transform: scale(1); }
+}
+
+/* Tabs — la cápsula es cristal y la pestaña activa una lámina encima.
+   Es el bloque elástico de la barra: se encoge antes que los demás y, si aun
+   así no cabe, se desplaza dentro de su propia cápsula en vez de romper la
+   línea. `min-width: 0` es lo que permite que un hijo de flex encoja por
+   debajo de su contenido; sin él, empujaría y forzaría el salto de fila. */
+.tabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  /* Centrada entre el grupo de la izquierda y la cartera. Con `margin-left`
+     sola quedaba pegada a la cartera y todo el hueco se acumulaba a un lado. */
+  margin-inline: auto;
+  height: var(--barra-alto);
+  border-radius: var(--r-full);
+  padding: 0 4px;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.tabs::-webkit-scrollbar { display: none; }
+
+/* Altura fija: la cápsula mide --barra-alto y reserva 4px arriba y abajo, así
+   que las pestañas ocupan justo el hueco restante. Con padding vertical el alto
+   dependía del texto y bailaba entre pestañas. */
+.tab {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-dim);
+  height: calc(var(--barra-alto) - 8px);
+  padding: 0 0.85rem;
+  border-radius: var(--r-full);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  white-space: nowrap;
+  transition: color 0.2s var(--ease), background 0.2s var(--ease), border-color 0.2s var(--ease);
+}
+
+.tab:hover { color: var(--text); background: rgba(255, 255, 255, 0.05); }
+
+.tab.active {
+  background: var(--glass-bg-strong);
+  border-color: var(--glass-border);
+  color: var(--text);
+  box-shadow: var(--glass-shine), var(--shadow-sm);
+}
+
+.tab.active .tab-icon { color: var(--accent-bright); }
+
+/* --------------------------------------------------------------------------
+   Cartera del header — los dos saldos, siempre visibles
+   No son controles: no se pulsan y no llevan el cristal de los botones. Son el
+   marcador, y por eso van al extremo derecho, después de las pestañas.
+   -------------------------------------------------------------------------- */
+
+.cartera {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* Aquí el desajuste era el contrario: el icono ya pesaba más que la cifra. Se
+   sube el número para que el par se lea como un saldo y no como una etiqueta
+   con un dibujo al lado. */
+.saldo {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.38rem;
+  border-radius: var(--r-full);
+  padding: 0 0.8rem;
+  height: var(--barra-alto);
+  font-size: 0.95rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+  border: 1px solid transparent;
+  white-space: nowrap;
+  cursor: default;
+}
+
+.saldo-icon { display: grid; place-items: center; }
+.saldo-icon .icon { width: 20px; height: 20px; }
+
+/* Trébol dorado para los hábitos, reloj rojo para el trabajo: el color es lo
+   que dice de qué moneda se habla sin tener que escribir el nombre. */
+.saldo.lucky {
+  background: rgba(251, 191, 36, 0.12);
+  border-color: rgba(251, 191, 36, 0.32);
+  color: var(--gold);
+}
+
+.saldo.chamba {
+  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.32);
+  color: var(--work-bright);
+}
+
+/* Pulso al subir: confirma que el gesto pagó, sin robar la atención. */
+.saldo.subiendo { animation: saldo-sube 0.6s var(--ease-spring); }
+
+@keyframes saldo-sube {
+  0% { transform: scale(1); }
+  35% { transform: scale(1.12); }
+  100% { transform: scale(1); }
+}
+
+/* --------------------------------------------------------------------------
+   Pestaña Work Mode
+   Rompe el sistema de pestañas a propósito: es un botón, no una sección. Rojo
+   sólido, más grande y con relieve, para que se vea desde el otro lado de la
+   barra. Sigue siendo un .tab, así que el conmutador de vistas no la trata
+   distinto: lo único que cambia es cómo se ve.
+   -------------------------------------------------------------------------- */
+
+.tab-work {
+  position: relative;
+  margin-left: 4px;
+  padding: 0 1.05rem;
+  background: linear-gradient(150deg, var(--work-bright), var(--work-deep));
+  border-color: rgba(255, 160, 160, 0.5);
+  color: #fff6f6;
+  font-weight: 700;
+  letter-spacing: 0.005em;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25), 0 3px 14px rgba(239, 68, 68, 0.4);
+}
+
+.tab-work .tab-icon { color: #fff; }
+.tab-work:hover { background: linear-gradient(150deg, #ff7373, #cc1f1f); color: #fff; }
+
+/* La activa no se apaga como las demás: se enciende más. */
+.tab-work.active {
+  background: linear-gradient(150deg, #ff6b6b, var(--work));
+  border-color: rgba(255, 200, 200, 0.75);
+  color: #fff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 4px 20px rgba(239, 68, 68, 0.55);
+}
+
+.tab-work.active .tab-icon { color: #fff; }
+
+/* En móvil las pestañas pierden el texto; esta lo conserva, si no quedaría un
+   cuadrado rojo sin nombre y el botón dejaría de decir lo que hace. */
+.tab-work .tab-text { display: inline; }
+
+/* Cuántas tareas abiertas hay. Solo aparece si hay alguna. */
+.tab-work-badge {
+  display: grid;
+  place-items: center;
+  min-width: 19px;
+  height: 19px;
+  padding: 0 5px;
+  border-radius: var(--r-full);
+  background: #fff;
+  color: var(--work-deep);
+  font-size: 0.68rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+/* Late solo cuando hay algo en curso: es lo que merece que mires. */
+.tab-work-badge.latiendo { animation: work-latido 2.4s var(--ease) infinite; }
+
+@keyframes work-latido {
+  0%, 72%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.5); }
+  80% { transform: scale(1.14); box-shadow: 0 0 0 5px rgba(255, 255, 255, 0); }
+}
+
+/* --------------------------------------------------------------------------
+   Estructura
+   -------------------------------------------------------------------------- */
+
+main {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 2rem 1.5rem 5rem;
+}
+
+.view { display: none; animation: view-in 0.35s var(--ease); }
+.view.active { display: block; }
+
+@keyframes view-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* Ligeramente translúcido y desenfocado: sobre el negro el color efectivo es
+   casi el mismo #0e0e0e de antes, pero deja al halo verde del fondo asomar y,
+   sobre todo, da a los botones de cristal algo real que desenfocar detrás. */
+.panel {
+  background: rgba(22, 22, 22, 0.68);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
+  backdrop-filter: blur(20px) saturate(150%);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: 1.25rem;
+}
+
+.section-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.25rem;
+}
+
+.section-title {
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  margin: 2.25rem 0 0.9rem;
+}
+
+.section-title.flush { margin: 0; }
+
+.empty-state {
+  color: var(--text-dim);
+  font-size: 0.92rem;
+  line-height: 1.6;
+  text-align: center;
+  padding: 2.5rem 1rem;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--r-lg);
+  /* Centrado y acotado: sin esto el texto cruzaba el panel de lado a lado. */
+  max-width: 60ch;
+  margin-inline: auto;
+}
+
+/* Base de cristal compartida por todo lo pulsable. Cualquier control nuevo
+   solo tiene que heredar de aquí para verse igual que el resto. */
+.btn,
+.icon-btn,
+.tabs,
+.segmented,
+.level-chip,
+.perfil-chip,
+.notas-orden {
+  background: var(--glass-bg);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shine), var(--glass-shadow);
+  /* El paso a dorado del día perfecto se funde, nunca salta. Mismo tiempo que
+     el resto de cambios de borde de la app: todos los controles tienen que
+     virar a la vez, si no se ve una ola desigual. */
+  transition: border-color 0.2s var(--ease), box-shadow 0.2s var(--ease);
+}
+
+/* --------------------------------------------------------------------------
+   Día perfecto
+   Mientras todos los hábitos de hoy estén hechos, el canto del vidrio de todos
+   los controles pasa a dorado. Un solo sitio: como todos leen los mismos
+   tokens, basta con redefinirlos aquí.
+   -------------------------------------------------------------------------- */
+
+body.dia-perfecto {
+  --glass-border: rgba(251, 191, 36, 0.45);
+  --glass-border-hover: rgba(253, 224, 71, 0.7);
+  --glass-shine: inset 0 1px 0 rgba(253, 224, 71, 0.28);
+  --glass-shadow: 0 2px 14px rgba(251, 191, 36, 0.14);
+}
+
+/* Los dos botones con color propio no leen los tokens: se les dice aparte. */
+body.dia-perfecto .btn.primary { border-color: rgba(253, 224, 71, 0.85); }
+body.dia-perfecto .btn.danger { border-color: rgba(251, 191, 36, 0.5); }
+
+/* Y el resto de controles pulsables que tienen su propio borde. */
+body.dia-perfecto .icon-option,
+body.dia-perfecto .seg.active,
+body.dia-perfecto .tab.active,
+body.dia-perfecto .nt-btn:hover,
+body.dia-perfecto .nt-btn.activa {
+  border-color: var(--glass-border);
+}
+
+body.dia-perfecto .icon-option.selected { border-color: var(--habit); }
+
+/* Las tarjetas de hábito también. Todo lo que pintan de color (borde, halo,
+   fondo, icono, check y la tira semanal) sale de --habit, así que basta con
+   redefinirlo. Lleva !important porque renderHoy() escribe --habit en el
+   atributo style de cada tarjeta y si no ganaría el color propio del hábito.
+   Los colores no se pierden: siguen estando en las luces del fondo.
+   Solo las de Hoy: el detalle del Historial puede estar enseñando cualquier
+   otro día y no tendría sentido pintarlo de dorado por lo que pase hoy. */
+body.dia-perfecto .habit-card { --habit: #fbbf24 !important; }
+
+/* Sobre dorado el check pide un oscuro cálido, no el verde casi negro. */
+body.dia-perfecto .habit-card.done .habit-check { color: #2a1a00; }
+
+/* La racha ya era dorada; sobre una tarjeta dorada se perdía. */
+body.dia-perfecto .habit-card.done .habit-streak.on { color: #fde68a; }
+
+/* El anillo del hero cierra el conjunto: el día está completo, va en dorado.
+   El resplandor lo pinta el filtro del SVG, así que se le cambia el color ahí
+   mismo; un `filter` de CSS aquí anularía el filtro y volvería a recortarlo. */
+body.dia-perfecto .ring-fill { stroke: var(--gold); }
+body.dia-perfecto #ring-glow feDropShadow { flood-color: var(--gold); flood-opacity: 0.6; }
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  border-radius: var(--r-full);
+  color: var(--text);
+  padding: 0.55rem 1.1rem;
+  font: inherit;
+  font-size: 0.86rem;
+  font-weight: 600;
+  cursor: pointer;
+  min-height: 40px;
+  transition: background 0.2s var(--ease), border-color 0.2s var(--ease),
+    box-shadow 0.2s var(--ease), transform 0.1s var(--ease);
+}
+
+/* Los botones que son enlaces —el de instalar la autoridad tiene que serlo
+   para que el sistema ofrezca abrir el archivo— se pintan igual que los demás.
+   Sin esto sale subrayado y con el color de enlace, y canta al lado del resto. */
+a.btn { text-decoration: none; }
+
+.btn:hover {
+  background: var(--glass-bg-hover);
+  border-color: var(--glass-border-hover);
+  box-shadow: var(--glass-shine), 0 6px 18px rgba(0, 0, 0, 0.45);
+}
+
+.btn:active { transform: scale(0.97); }
+
+/* El primario mantiene el verde, pero translúcido y desenfocado: sigue siendo
+   cristal, solo que teñido. El 88% de opacidad conserva el contraste del texto. */
+.btn.primary {
+  background: rgba(34, 197, 94, 0.88);
+  border-color: rgba(134, 239, 172, 0.55);
+  color: #04140a;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), 0 4px 16px rgba(34, 197, 94, 0.28);
+}
+
+.btn.primary:hover {
+  background: rgba(74, 222, 128, 0.95);
+  border-color: rgba(187, 247, 208, 0.7);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 6px 22px rgba(34, 197, 94, 0.4);
+}
+
+.btn.ghost { background: rgba(255, 255, 255, 0.025); }
+.btn.ghost:hover { background: var(--glass-bg-hover); }
+
+.btn.danger {
+  color: #fda4af;
+  border-color: rgba(244, 63, 94, 0.38);
+  background: rgba(244, 63, 94, 0.14);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), var(--glass-shadow);
+}
+
+.btn.danger:hover { background: rgba(244, 63, 94, 0.24); border-color: rgba(244, 63, 94, 0.6); }
+
+.icon-btn {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: var(--r-full);
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: background 0.2s var(--ease), color 0.2s var(--ease),
+    border-color 0.2s var(--ease), box-shadow 0.2s var(--ease);
+}
+
+.icon-btn:hover {
+  background: var(--glass-bg-hover);
+  color: var(--text);
+  border-color: var(--glass-border-hover);
+}
+
+.icon-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+.segmented {
+  display: flex;
+  gap: 2px;
+  border-radius: var(--r-full);
+  padding: 3px;
+}
+
+.seg {
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 0.4rem 0.95rem;
+  border-radius: var(--r-full);
+  cursor: pointer;
+  min-height: 34px;
+  transition: background 0.2s var(--ease), color 0.2s var(--ease), border-color 0.2s var(--ease);
+}
+
+.seg:hover { color: var(--text); }
+
+/* El seleccionado es una segunda lámina de cristal sobre la primera. */
+.seg.active {
+  background: var(--glass-bg-strong);
+  border-color: var(--glass-border);
+  color: var(--text);
+  box-shadow: var(--glass-shine);
+}
+
+/* --------------------------------------------------------------------------
+   Vista Hoy — hero con anillo
+   -------------------------------------------------------------------------- */
+
+.hero {
+  display: flex;
+  align-items: center;
+  gap: 2rem;
+  background: linear-gradient(150deg, var(--surface-2), var(--surface) 55%);
+  border: 1px solid var(--border);
+  border-radius: var(--r-xl);
+  padding: 1.75rem 2rem;
+  margin-bottom: 1.75rem;
+  box-shadow: var(--shadow-md);
+}
+
+/* El anillo es lo primero que se mira del hero, así que manda en la jerarquía.
+   Ojo con la caja: parte de ella es margen para el resplandor, así que no
+   equivale al tamaño que se ve. Lo que crece de verdad es el aro (+22%) y el
+   hueco de dentro (+28%), y el trazo baja del 9,6% al 7,3% del diámetro: un
+   aro fino sobre un círculo grande dibuja mejor el progreso y deja más aire. */
+.hero-ring { position: relative; width: 184px; height: 184px; flex-shrink: 0; }
+
+/* overflow visible para que el resplandor pueda salir de la caja del SVG. */
+.ring { width: 100%; height: 100%; transform: rotate(-90deg); overflow: visible; }
+
+.ring-track {
+  fill: none;
+  stroke: var(--surface-3);
+  stroke-width: 9;
+}
+
+.ring-fill {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 9;
+  stroke-linecap: round;
+  stroke-dasharray: 389.56;        /* 2 * PI * 62 */
+  stroke-dashoffset: 389.56;
+  transition: stroke-dashoffset 0.9s var(--ease);
+  /* El resplandor ya no es un drop-shadow de CSS: lo hace el filtro del SVG,
+     que sí puede declarar una región lo bastante grande como para no cortarse.
+     Poner aquí `filter` volvería a pisarlo. */
+}
+
+/* El color del resplandor sigue al del anillo. */
+#ring-glow feDropShadow { flood-color: var(--accent); flood-opacity: 0.55; }
+
+/* El hueco central crece con el anillo: el número gana un 23% de tamaño y la
+   etiqueta se queda pequeña y espaciada, para que no compitan. */
+.ring-center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+}
+
+.ring-count {
+  font-size: 2.25rem;              /* crece con el hueco, +28% */
+  font-weight: 800;
+  /* Cuanto más grande el número, más hay que apretarlo. */
+  letter-spacing: -0.04em;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.ring-label {
+  font-size: 0.68rem;
+  color: var(--text-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  line-height: 1.2;
+}
+
+.hero-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.55rem; }
+
+.hero-date {
+  font-size: 0.78rem;
+  color: var(--text-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 600;
+}
+
+.hero-message {
+  font-size: 1.3rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.3;
+}
+
+.hero-chips { display: flex; flex-wrap: wrap; gap: 0.6rem; }
+
+/* Los chips del hero son el marcador del día: la racha y los días perfectos
+   son las dos cifras que más se miran, así que la cifra manda sobre la palabra
+   —grande y en peso 800— y el texto queda como pie pequeño. Antes todo iba al
+   mismo cuerpo de 0,78rem y el número se perdía entre las letras. */
+.chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  border-radius: var(--r-lg);
+  padding: 0.5rem 0.95rem;
+  font-size: 0.76rem;
+  font-weight: 600;
+  line-height: 1.25;
+  background: var(--surface-3);
+  border: 1px solid var(--border-strong);
+  color: var(--text-dim);
+  transition: transform 0.2s var(--ease), border-color 0.2s var(--ease),
+    background 0.2s var(--ease), box-shadow 0.2s var(--ease);
+}
+
+.chip .num {
+  color: inherit;
+  font-size: 1.5rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1;
+}
+
+/* El icono se dimensiona contra la CIFRA que acompaña, no contra un número
+   global. Una cifra de 24px tiene una altura de mayúscula de ~17px, mientras
+   que un icono llena casi toda su caja: para que pesen igual, el icono va a
+   ~0,85 del cuerpo de la cifra. A 16px al lado de un 28 parecía un adorno.
+   Se dimensiona desde CSS y no desde iconSVG() porque los atributos width y
+   height del SVG son de presentación y cualquier regla los gana. */
+.chip .icon {
+  align-self: center;
+  width: 21px;
+  height: 21px;
+}
+
+/* Las dos cifras grandes (racha y días perfectos) llevan icono a juego. */
+.chip.flame .icon,
+.chip.good .icon {
+  width: 24px;
+  height: 24px;
+}
+
+.chip.flame { background: rgba(251, 191, 36, 0.1); border-color: rgba(251, 191, 36, 0.3); color: var(--gold); }
+.chip.good { background: var(--accent-dim); border-color: rgba(34, 197, 94, 0.32); color: var(--accent-bright); }
+
+/* Las dos que importan van un punto más grandes todavía. */
+.chip.flame .num, .chip.good .num { font-size: 1.75rem; }
+
+.chip.flame:hover {
+  border-color: rgba(251, 191, 36, 0.6);
+  background: rgba(251, 191, 36, 0.16);
+  box-shadow: 0 6px 20px rgba(251, 191, 36, 0.18);
+}
+
+.chip.good:hover {
+  border-color: rgba(34, 197, 94, 0.6);
+  background: rgba(34, 197, 94, 0.2);
+  box-shadow: 0 6px 20px rgba(34, 197, 94, 0.18);
+}
+
+.chip:hover { transform: translateY(-2px); }
+.chip.lucky:hover { border-color: rgba(251, 191, 36, 0.6); box-shadow: 0 6px 20px rgba(251, 191, 36, 0.18); }
+
+.hero-week { display: flex; align-items: center; gap: 0.65rem; margin-top: 0.2rem; }
+
+.hero-week-label { font-size: 0.72rem; color: var(--text-faint); }
+
+.week-dots { display: flex; gap: 5px; }
+
+.week-dot {
+  width: 22px;
+  height: 6px;
+  border-radius: var(--r-full);
+  background: var(--surface-3);
+}
+
+.week-dot.p1 { background: rgba(34, 197, 94, 0.3); }
+.week-dot.p2 { background: rgba(34, 197, 94, 0.55); }
+.week-dot.p3 { background: rgba(34, 197, 94, 0.78); }
+.week-dot.p4 { background: var(--accent-bright); box-shadow: 0 0 8px rgba(74, 222, 128, 0.5); }
+
+/* --------------------------------------------------------------------------
+   Vista Hoy — tarjetas de hábito
+   -------------------------------------------------------------------------- */
+
+.habit-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(178px, 1fr));
+  gap: 0.9rem;
+}
+
+.habit-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: 1.05rem;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  user-select: none;
+  transition: border-color 0.25s var(--ease), background 0.25s var(--ease),
+    box-shadow 0.25s var(--ease), transform 0.12s var(--ease);
+}
+
+.habit-card:hover { border-color: var(--border-strong); background: var(--surface-2); }
+.habit-card:active { transform: scale(0.98); }
+
+/* Estado completado: el color del hábito toma el mando (borde, halo, icono). */
+.habit-card.done {
+  border-color: color-mix(in srgb, var(--habit) 55%, transparent);
+  background:
+    linear-gradient(160deg, color-mix(in srgb, var(--habit) 13%, transparent), transparent 60%),
+    var(--surface-2);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--habit) 18%, transparent),
+    0 8px 28px color-mix(in srgb, var(--habit) 16%, transparent);
+}
+
+.habit-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.5rem; }
+
+.habit-icon {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border-radius: var(--r-md);
+  background: var(--surface-3);
+  color: var(--text-faint);
+  transition: background 0.25s var(--ease), color 0.25s var(--ease), transform 0.3s var(--ease-spring);
+}
+
+.habit-card.done .habit-icon {
+  background: color-mix(in srgb, var(--habit) 20%, transparent);
+  color: var(--habit);
+}
+
+.habit-card.celebrating .habit-icon { transform: scale(1.12) rotate(-6deg); }
+
+.habit-check {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 2px solid var(--border-strong);
+  color: transparent;
+  background: transparent;
+  transition: background 0.25s var(--ease), border-color 0.25s var(--ease),
+    color 0.25s var(--ease), transform 0.35s var(--ease-spring);
+  flex-shrink: 0;
+}
+
+.habit-card.done .habit-check {
+  background: var(--habit);
+  border-color: var(--habit);
+  color: #06120a;
+  transform: scale(1.08);
+}
+
+.habit-name {
+  font-size: 0.98rem;
+  font-weight: 680;
+  letter-spacing: -0.01em;
+}
+
+.habit-foot { display: flex; align-items: center; justify-content: space-between; gap: 0.6rem; }
+
+.habit-streak {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.75rem;
+  font-weight: 650;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.habit-streak.on { color: var(--gold); }
+
+/* Tira de los últimos 7 días: ocupa todo el ancho de la tarjeta, así se lee
+   de un vistazo como una barra de constancia. */
+.habit-strip { display: flex; gap: 3px; margin-top: -0.15rem; }
+
+.habit-pill {
+  flex: 1;
+  height: 5px;
+  border-radius: var(--r-full);
+  background: var(--surface-3);
+  transition: background 0.3s var(--ease);
+}
+
+.habit-pill.on { background: var(--habit); }
+.habit-card.done .habit-pill.on:last-child { box-shadow: 0 0 8px color-mix(in srgb, var(--habit) 60%, transparent); }
+
+/* --------------------------------------------------------------------------
+   Vista Hoy — reto de los primeros 30 días
+   Rueda de anillos: uno por hábito (el 1 es el de dentro), 30 sectores de día.
+   El color aquí sí es semántico: verde hecho, rojo perdido, apagado por venir.
+   -------------------------------------------------------------------------- */
+
+.reto-panel {
+  margin-top: 1.5rem;
+  padding: 1.35rem 1.35rem 1.1rem;
+}
+
+.reto-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.1rem;
+}
+
+.reto-title {
+  font-size: 1.02rem;
+  font-weight: 680;
+  letter-spacing: -0.01em;
+}
+
+.reto-sub {
+  margin-top: 0.2rem;
+  font-size: 0.82rem;
+  color: var(--text-faint);
+}
+
+.reto-acciones {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.reto-stats { display: flex; gap: 0.4rem; flex-wrap: wrap; }
+
+.reto-reiniciar { padding: 0.4rem 0.85rem; min-height: 34px; font-size: 0.8rem; }
+
+.reto-body {
+  display: grid;
+  grid-template-columns: minmax(190px, 260px) minmax(0, 1fr);
+  gap: 1.5rem;
+  align-items: center;
+}
+
+.reto-leyenda {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.reto-hab {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.4rem 0.6rem;
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  font-size: 0.86rem;
+}
+
+.reto-hab-n {
+  width: 20px;
+  flex-shrink: 0;
+  text-align: center;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.reto-hab-icono { display: grid; place-items: center; color: var(--habit); flex-shrink: 0; }
+
+.reto-hab-nombre {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.reto-hab-cuenta { font-size: 0.76rem; color: var(--text-faint); }
+.reto-hab-cuenta b { color: var(--habit); font-weight: 700; }
+
+.reto-rueda { display: grid; place-items: center; }
+
+.reto-svg {
+  width: 100%;
+  max-width: 400px;
+  height: auto;
+  display: block;
+  overflow: visible;
+}
+
+/* Casillas. El trazo negro separa anillos vecinos sin líneas extra. La rueda
+   es solo de lectura: refleja el historial, no se edita desde aquí. */
+.reto-cell {
+  stroke: var(--bg);
+  stroke-width: 0.6;
+  cursor: default;
+  transition: fill 0.25s var(--ease);
+}
+
+.reto-cell.hecho { fill: var(--accent); }
+.reto-cell.fallado { fill: #b91c1c; }
+.reto-cell.pendiente { fill: color-mix(in srgb, var(--habit) 32%, #1d1d1d); }
+.reto-cell.futuro { fill: #161616; }
+
+/* Arco de oro por fuera: marca los días que salieron perfectos, que son los
+   que de verdad suman en el reto. */
+.reto-perfecto { fill: var(--gold); pointer-events: none; }
+
+.reto-marca-hoy {
+  fill: none;
+  stroke: var(--text);
+  stroke-width: 1.6;
+  opacity: 0.85;
+  pointer-events: none;
+}
+
+.reto-num {
+  fill: var(--text-faint);
+  font-family: var(--font-num);
+  font-size: 12px;
+  text-anchor: middle;
+  dominant-baseline: central;
+}
+
+.reto-num.hoy { fill: var(--accent-bright); font-weight: 700; }
+
+.reto-centro-fondo { fill: var(--bg-elev); stroke: var(--border); stroke-width: 1; }
+
+.reto-centro-num {
+  fill: var(--text);
+  font-family: var(--font-num);
+  font-size: 27px;
+  font-weight: 700;
+  text-anchor: middle;
+  dominant-baseline: central;
+}
+
+.reto-centro-de { fill: var(--text-faint); font-size: 15px; font-weight: 600; }
+
+.reto-centro-txt {
+  fill: var(--gold);
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.03em;
+  text-anchor: middle;
+  dominant-baseline: central;
+}
+
+.reto-centro-pie {
+  fill: var(--text-faint);
+  font-size: 9.5px;
+  text-anchor: middle;
+  dominant-baseline: central;
+}
+
+.reto-pie {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  margin-top: 1.1rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--border);
+  font-size: 0.75rem;
+  color: var(--text-faint);
+}
+
+.reto-key {
+  width: 11px;
+  height: 11px;
+  border-radius: 3px;
+  display: inline-block;
+}
+
+.reto-key + .reto-key { margin-left: 0.6rem; }
+.reto-key.hecho { background: var(--accent); }
+.reto-key.fallado { background: #b91c1c; }
+.reto-key.pendiente { background: #2f2f2f; }
+.reto-key.futuro { background: #161616; border: 1px solid var(--border); }
+.reto-key.perfecto { background: var(--gold); }
+
+.reto-ayuda { margin-left: auto; }
+
+@media (max-width: 720px) {
+  .reto-body { grid-template-columns: 1fr; gap: 1.1rem; }
+  .reto-ayuda { margin-left: 0; }
+}
+
+/* --------------------------------------------------------------------------
+   Work Mode
+   Vista de trabajo. Todo el acento es rojo para que se note que estás en otro
+   modo, pero las superficies son las mismas del resto de la app: cambia el
+   color, no el sistema.
+   -------------------------------------------------------------------------- */
+
+#view-work { --accent: var(--work); --accent-bright: var(--work-bright); --accent-dim: var(--work-dim); }
+
+.work-hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+  background:
+    linear-gradient(150deg, rgba(239, 68, 68, 0.14), transparent 58%),
+    var(--surface);
+  border: 1px solid rgba(239, 68, 68, 0.28);
+  border-radius: var(--r-xl);
+  padding: 1.5rem 1.75rem;
+  margin-bottom: 1.25rem;
+  box-shadow: var(--shadow-md);
+}
+
+.work-hero-texto { min-width: 0; display: flex; flex-direction: column; gap: 0.3rem; }
+
+/* "Work Mode" en Akira: dos palabras cortas, sin acentos, y en un modo que ya
+   rompe el sistema a propósito. Es el segundo y último sitio donde aparece. */
+.work-kicker {
+  font-family: var(--font-display);
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--work-bright);
+  line-height: 1.4;
+}
+
+.work-title {
+  font-size: 1.45rem;
+  font-weight: 800;
+  letter-spacing: -0.025em;   /* apretado porque es texto grande */
+  line-height: 1.2;
+}
+
+.work-sub { font-size: 0.88rem; color: var(--text-dim); max-width: 52ch; }
+
+/* Botón primario en rojo. Mismo cristal que el resto, otro tinte. */
+.btn.work-primary {
+  background: rgba(239, 68, 68, 0.9);
+  border-color: rgba(255, 170, 170, 0.55);
+  color: #fff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), 0 4px 16px rgba(239, 68, 68, 0.3);
+}
+
+.btn.work-primary:hover {
+  background: rgba(255, 95, 95, 0.96);
+  border-color: rgba(255, 210, 210, 0.7);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 6px 22px rgba(239, 68, 68, 0.42);
+}
+
+/* ---- resumen ---- */
+
+.work-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.8rem;
+  margin-bottom: 1.5rem;
+}
+
+.work-tile {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: 0.95rem 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.work-tile-head {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.7rem;
+  font-weight: 650;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.work-tile-value { font-size: 1.6rem; font-weight: 800; letter-spacing: -0.03em; line-height: 1.1; }
+.work-tile-sub { font-size: 0.74rem; color: var(--text-dim); letter-spacing: 0.012em; }
+
+.work-tile.curso { border-color: rgba(239, 68, 68, 0.35); }
+.work-tile.curso .work-tile-head .icon { color: var(--work-bright); }
+.work-tile.espera .work-tile-head .icon { color: var(--text-dim); }
+.work-tile.freno .work-tile-head .icon { color: var(--gold); }
+.work-tile.fin .work-tile-head .icon { color: var(--accent-bright); }
+
+.work-barra { align-items: center; }
+.work-buscar { max-width: 320px; flex: 1; }
+.work-filtros { flex-wrap: wrap; }
+
+/* ---- tarjeta de tarea ---- */
+
+.work-lista { display: flex; flex-direction: column; gap: 0.7rem; }
+
+.work-task {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--border-strong);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+  transition: border-color 0.25s var(--ease), box-shadow 0.25s var(--ease);
+}
+
+/* El estado se lee por el canto izquierdo antes que por la etiqueta: barrer la
+   lista con la vista no debería obligar a leer nada. */
+.work-task.estado-en-curso { border-left-color: var(--work); box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.12); }
+.work-task.estado-bloqueada { border-left-color: var(--gold); }
+.work-task.estado-pendiente { border-left-color: var(--border-strong); }
+.work-task.estado-hecha { border-left-color: var(--accent); opacity: 0.72; }
+.work-task.estado-hecha .wt-titulo { text-decoration: line-through; text-decoration-color: var(--text-faint); }
+.work-task.abierta { border-color: var(--border-strong); box-shadow: var(--shadow-md); }
+
+.wt-head { display: flex; align-items: flex-start; gap: 0.6rem; padding: 0.9rem 1rem; }
+
+.wt-toggle {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.4rem;
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+}
+
+.wt-estado-pill {
+  font-size: 0.64rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.estado-en-curso .wt-estado-pill { color: var(--work-bright); }
+.estado-bloqueada .wt-estado-pill { color: var(--gold); }
+.estado-hecha .wt-estado-pill { color: var(--accent-bright); }
+
+.wt-titulo {
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: -0.012em;
+  line-height: 1.35;
+}
+
+.wt-meta { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+
+.wt-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  border-radius: var(--r-full);
+  padding: 0.15rem 0.55rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.012em;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+}
+
+.wt-chip.area { color: var(--text); }
+.wt-chip.moneda { color: var(--work-bright); border-color: rgba(239, 68, 68, 0.3); background: var(--work-dim); }
+.estado-hecha .wt-chip.moneda { color: var(--gold); border-color: rgba(251, 191, 36, 0.35); background: rgba(251, 191, 36, 0.1); }
+.wt-chip.prio-alta { color: #fca5a5; border-color: rgba(239, 68, 68, 0.35); background: var(--work-dim); }
+.wt-chip.prio-baja { color: var(--text-faint); }
+.wt-chip.vence.pronto { color: var(--gold); border-color: rgba(251, 191, 36, 0.32); }
+.wt-chip.vence.urge,
+.wt-chip.vence.tarde { color: #fca5a5; border-color: rgba(239, 68, 68, 0.45); background: var(--work-dim); }
+
+.wt-acciones { display: flex; align-items: center; gap: 0.35rem; flex-shrink: 0; }
+
+.wt-estado-sel {
+  background: var(--glass-bg);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shine);
+  color: var(--text-dim);
+  border-radius: var(--r-full);
+  padding: 0.3rem 0.55rem;
+  font: inherit;
+  font-size: 0.74rem;
+  cursor: pointer;
+  min-height: 34px;
+}
+
+.wt-estado-sel option { background: var(--surface-2); color: var(--text); }
+.wt-acciones .icon-btn { width: 34px; height: 34px; }
+
+/* ---- barra de progreso de los pasos ---- */
+
+.wt-progreso {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0 1rem 0.9rem;
+}
+
+.wt-track { flex: 1; height: 4px; border-radius: var(--r-full); background: var(--surface-3); overflow: hidden; }
+
+.wt-fill {
+  display: block;
+  height: 100%;
+  border-radius: var(--r-full);
+  background: linear-gradient(90deg, var(--work), var(--work-bright));
+  transition: width 0.5s var(--ease);
+}
+
+.estado-hecha .wt-fill { background: linear-gradient(90deg, var(--accent), var(--accent-bright)); }
+.wt-pct { font-size: 0.7rem; color: var(--text-faint); min-width: 2.5rem; text-align: right; }
+
+/* ---- cuerpo desplegable ---- */
+
+.wt-cuerpo {
+  border-top: 1px solid var(--border);
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  animation: wt-abre 0.25s var(--ease);
+}
+
+@keyframes wt-abre {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* Prosa: se corta a 70 caracteres. A pantalla completa la línea llegaba a más
+   de 120 y el ojo perdía el renglón al volver. */
+.wt-detalle {
+  font-size: 0.88rem;
+  color: var(--text-dim);
+  line-height: 1.65;
+  white-space: pre-wrap;
+  max-width: 70ch;
+}
+
+.wt-bloque { display: flex; flex-direction: column; gap: 0.55rem; }
+
+.wt-bloque-titulo {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  margin: 0;
+}
+
+.wt-bloque-nota { margin-left: auto; font-weight: 600; letter-spacing: 0.02em; text-transform: none; }
+
+/* ---- pasos ---- */
+
+.wt-pasos { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+
+.wt-paso {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.4rem 0.5rem;
+  border-radius: var(--r-sm);
+  transition: background 0.15s var(--ease);
+}
+
+.wt-paso:hover { background: var(--surface-2); }
+
+.wt-paso-check {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  border: 2px solid var(--border-strong);
+  background: transparent;
+  color: transparent;
+  cursor: pointer;
+  padding: 0;
+  transition: background 0.2s var(--ease), border-color 0.2s var(--ease),
+    color 0.2s var(--ease), transform 0.3s var(--ease-spring);
+}
+
+.wt-paso-check:hover { border-color: var(--work-bright); }
+
+.wt-paso.done .wt-paso-check {
+  background: var(--work);
+  border-color: var(--work);
+  color: #fff;
+  transform: scale(1.06);
+}
+
+.wt-paso-txt { flex: 1; min-width: 0; font-size: 0.88rem; line-height: 1.45; }
+.wt-paso.done .wt-paso-txt { color: var(--text-faint); text-decoration: line-through; }
+.wt-paso-fecha { font-size: 0.68rem; color: var(--text-faint); white-space: nowrap; letter-spacing: 0.012em; }
+
+/* Quitar un paso es raro y destructivo: no está a la vista hasta que hace falta. */
+.wt-paso-x { width: 26px; height: 26px; opacity: 0; flex-shrink: 0; }
+.wt-paso:hover .wt-paso-x, .wt-paso-x:focus-visible { opacity: 1; }
+
+/* ---- bitácora ---- */
+
+.wt-log { list-style: none; margin: 0; padding: 0 0 0 0.5rem; display: flex; flex-direction: column; }
+
+.wt-log-item { display: flex; gap: 0.7rem; position: relative; padding: 0.35rem 0; }
+
+/* Línea de tiempo: un hilo vertical que une las marcas. */
+.wt-log-item::before {
+  content: "";
+  position: absolute;
+  left: 4px;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--border);
+}
+
+.wt-log-item:first-child::before { top: 0.8rem; }
+.wt-log-item:last-child::before { bottom: calc(100% - 0.8rem); }
+
+.wt-log-marca {
+  position: relative;
+  z-index: 1;
+  width: 9px;
+  height: 9px;
+  margin-top: 0.42rem;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--surface-3);
+  border: 1px solid var(--border-strong);
+}
+
+/* Lo que escribió una persona pesa más que lo que anotó el sistema. */
+.wt-log-item.nota .wt-log-marca { background: var(--work); border-color: var(--work-bright); }
+.wt-log-item.auto .wt-log-txt { color: var(--text-faint); font-size: 0.8rem; }
+.wt-log-item.nota .wt-log-txt { color: var(--text); }
+
+.wt-log-cuerpo { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.wt-log-txt { font-size: 0.86rem; line-height: 1.6; max-width: 70ch; }
+.wt-log-fecha { font-size: 0.68rem; color: var(--text-faint); letter-spacing: 0.012em; }
+
+.wt-log-x { width: 26px; height: 26px; opacity: 0; flex-shrink: 0; align-self: center; }
+.wt-log-item:hover .wt-log-x, .wt-log-x:focus-visible { opacity: 1; }
+
+/* ---- añadir paso / entrada ---- */
+
+.wt-add { display: flex; gap: 0.5rem; margin-top: 0.2rem; }
+
+.wt-add input {
+  flex: 1;
+  min-width: 0;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: var(--r-full);
+  color: var(--text);
+  padding: 0.45rem 0.9rem;
+  font: inherit;
+  font-size: 0.84rem;
+  min-height: 38px;
+}
+
+.wt-add input::placeholder { color: var(--text-faint); }
+
+.wt-add input:focus {
+  outline: none;
+  border-color: rgba(239, 68, 68, 0.55);
+  box-shadow: 0 0 0 3px var(--work-dim);
+}
+
+.wt-tiempos {
+  font-size: 0.7rem;
+  color: var(--text-faint);
+  letter-spacing: 0.012em;
+  border-top: 1px solid var(--border);
+  padding-top: 0.7rem;
+}
+
+/* ---- editor de tarea ---- */
+
+.work-editor { margin-bottom: 1rem; }
+.work-editor-fila { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 0.9rem; }
+
+.work-editor textarea {
+  background: var(--bg-elev);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  padding: 0.5rem 0.6rem;
+  font: inherit;
+  font-size: 0.86rem;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.work-editor textarea:focus,
+.work-editor input:focus,
+.work-editor select:focus {
+  outline: none;
+  border-color: rgba(239, 68, 68, 0.55);
+  box-shadow: 0 0 0 3px var(--work-dim);
+}
+
+.work-editor input[type="date"] { color-scheme: dark; }
+
+/* --------------------------------------------------------------------------
+   Historial — calendario mensual
+   -------------------------------------------------------------------------- */
+
+.month-nav { display: flex; align-items: center; gap: 0.6rem; }
+
+/* En español el mes viene como "agosto de 2026": `capitalize` pondría también
+   "De" en mayúscula, así que solo se toca la primera letra. */
+.month-label {
+  font-size: 1rem;
+  font-weight: 650;
+  min-width: 10.5rem;
+  text-align: center;
+}
+
+.month-label::first-letter,
+.day-detail-title::first-letter { text-transform: uppercase; }
+
+.weekday-row,
+.calendar {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+}
+
+/* Altura fija en vez de aspect-ratio: con celdas cuadradas de ~135px el mes
+   ocupaba dos pantallas para mostrar muy poca información. */
+.calendar { grid-auto-rows: 76px; }
+
+.weekday-row { margin-bottom: 6px; }
+
+.weekday {
+  text-align: center;
+  font-size: 0.68rem;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  padding-bottom: 2px;
+}
+
+.day {
+  position: relative;
+  border-radius: var(--r-md);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  cursor: pointer;
+  font: inherit;
+  color: var(--text-dim);
+  padding: 0;
+  transition: border-color 0.2s var(--ease), background 0.2s var(--ease), transform 0.12s var(--ease);
+}
+
+.day:hover { border-color: var(--border-strong); background: var(--surface-2); }
+.day:active { transform: scale(0.96); }
+.day.empty { visibility: hidden; }
+
+.day.hoy { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent-dim); }
+.day.selected { border-color: var(--accent-bright); background: var(--surface-3); }
+
+.day-num { font-size: 0.85rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+.day.futuro { opacity: 0.4; cursor: default; }
+.day.futuro:hover { border-color: var(--border); background: var(--surface); }
+
+/* Anillo de completitud del día, dibujado con conic-gradient (sin SVG por celda). */
+.day-ring {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: conic-gradient(var(--accent) calc(var(--pct) * 1%), var(--surface-3) 0);
+  display: grid;
+  place-items: center;
+}
+
+.day-ring::after {
+  content: "";
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--surface);
+}
+
+.day.perfecto .day-ring { box-shadow: 0 0 10px rgba(34, 197, 94, 0.5); }
+.day.perfecto .day-num { color: var(--accent-bright); }
+
+/* Detalle del día seleccionado */
+.day-detail {
+  margin-top: 1.25rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--border);
+}
+
+.day-detail-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.9rem;
+  flex-wrap: wrap;
+}
+
+.day-detail-title { font-size: 0.98rem; font-weight: 650; }
+
+.day-detail-list { display: flex; flex-direction: column; gap: 0.4rem; }
+
+.day-habit {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.55rem 0.8rem;
+  border-radius: var(--r-md);
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  cursor: pointer;
+  font: inherit;
+  color: var(--text-dim);
+  text-align: left;
+  min-height: 44px;
+  transition: border-color 0.2s var(--ease), background 0.2s var(--ease), color 0.2s var(--ease);
+}
+
+.day-habit:hover { border-color: var(--border-strong); }
+
+.day-habit.done {
+  color: var(--text);
+  border-color: color-mix(in srgb, var(--habit) 45%, transparent);
+  background: color-mix(in srgb, var(--habit) 10%, var(--surface-2));
+}
+
+.day-habit .dh-icon { color: var(--text-faint); }
+.day-habit.done .dh-icon { color: var(--habit); }
+.day-habit .dh-name { flex: 1; font-size: 0.88rem; font-weight: 550; }
+
+.day-habit .dh-check {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2px solid var(--border-strong);
+  color: transparent;
+}
+
+.day-habit.done .dh-check { background: var(--habit); border-color: var(--habit); color: #06120a; }
+
+/* --------------------------------------------------------------------------
+   Historial — matriz compacta (días x hábitos)
+   -------------------------------------------------------------------------- */
+
+/* Con muchos hábitos la matriz se hace más ancha que el panel: que scrollee
+   ella sola en vez de romper el ancho de la página. */
+#historial-matriz { overflow-x: auto; }
+
+/* Filas de altura fija y columnas con tope: sin esto las celdas cuadradas se
+   estiran a ~120px y el mes se vuelve un muro ilegible. */
+.matrix {
+  display: grid;
+  gap: 4px;
+  font-size: 0.72rem;
+  grid-template-rows: 46px;   /* cabecera */
+  grid-auto-rows: 22px;       /* un día por fila */
+  justify-content: start;
+  min-width: max-content;
+}
+
+.matrix .mx-head {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 3px;
+  padding-bottom: 6px;
+  color: var(--text-faint);
+}
+
+.matrix .mx-head .icon { color: var(--habit); }
+.matrix .mx-head-name {
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.matrix .mx-day {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding-right: 6px;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.matrix .mx-day.hoy { color: var(--accent-bright); font-weight: 700; }
+
+.matrix .mx-cell {
+  border-radius: 5px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  transition: background 0.2s var(--ease), border-color 0.2s var(--ease);
+}
+
+.matrix .mx-cell.done {
+  background: var(--habit);
+  border-color: var(--habit);
+}
+
+.matrix .mx-cell.futuro { opacity: 0.35; }
+
+/* --------------------------------------------------------------------------
+   Progreso — tiles, logros, heatmap
+   -------------------------------------------------------------------------- */
+
+/* Seis tiles: en 3 columnas quedan dos filas llenas en vez de 5 + 1 huérfano. */
+.stat-tiles {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.9rem;
+}
+
+.tile {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: 1.1rem 1.2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.tile-head {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.72rem;
+  font-weight: 650;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.tile-value {
+  font-size: 1.9rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+
+.tile-sub { font-size: 0.76rem; color: var(--text-dim); }
+
+.tile.gold .tile-head .icon { color: var(--gold); }
+.tile.green .tile-head .icon { color: var(--accent-bright); }
+.tile.blue .tile-head .icon { color: #60a5fa; }
+.tile.violet .tile-head .icon { color: #a78bfa; }
+
+/* La cartera no es una estadística más: es un saldo. Ocupa su propia banda a lo
+   ancho, en horizontal, para que no se lea como el séptimo dato de una rejilla
+   de seis (y de paso no deja una tarjeta huérfana en la última fila). */
+.tile.lucky,
+.work-tile.cartera {
+  grid-column: 1 / -1;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.9rem;
+  flex-wrap: wrap;
+  background: linear-gradient(120deg, rgba(251, 191, 36, 0.1), transparent 55%), var(--surface);
+  border-color: rgba(251, 191, 36, 0.3);
+}
+
+.tile.lucky .tile-head,
+.work-tile.cartera .work-tile-head { color: var(--gold); }
+.tile.lucky .tile-head .icon,
+.work-tile.cartera .work-tile-head .icon { color: var(--gold); }
+
+.tile.lucky .tile-value,
+.work-tile.cartera .work-tile-value { margin-left: auto; color: var(--gold); }
+
+.tile.lucky .tile-sub,
+.work-tile.cartera .work-tile-sub { order: 3; flex-basis: 100%; }
+
+/* La cartera del trabajo es roja: es la otra moneda, no la misma en otro sitio. */
+.work-tile.cartera {
+  background: linear-gradient(120deg, rgba(239, 68, 68, 0.12), transparent 55%), var(--surface);
+  border-color: rgba(239, 68, 68, 0.32);
+}
+
+.work-tile.cartera .work-tile-head,
+.work-tile.cartera .work-tile-head .icon,
+.work-tile.cartera .work-tile-value { color: var(--work-bright); }
+
+/* Chip de saldo en la cabecera de Hoy. */
+.chip.lucky {
+  background: rgba(251, 191, 36, 0.1);
+  border-color: rgba(251, 191, 36, 0.3);
+  color: var(--gold);
+}
+
+/* Contador junto al título de sección ("12 de 33"). */
+.section-count {
+  margin-left: 0.5rem;
+  color: var(--text-dim);
+  letter-spacing: 0.04em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Los logros van por temas: 33 tarjetas seguidas no se leen, seis bloques sí. */
+.badges { display: flex; flex-direction: column; gap: 1.5rem; }
+
+.badge-grupo-title {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  font-size: 0.74rem;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin: 0 0 0.7rem;
+}
+
+.badge-grupo-count { color: var(--text-faint); font-weight: 600; letter-spacing: 0.02em; }
+
+.badges-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 0.7rem;
+}
+
+.badge {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  text-align: center;
+  padding: 1rem 0.7rem 0.85rem;
+  border-radius: var(--r-md);
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.badge-icon {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: var(--surface-3);
+  color: var(--text-faint);
+}
+
+.badge-name { font-size: 0.8rem; font-weight: 680; color: var(--text-dim); }
+.badge-desc { font-size: 0.7rem; color: var(--text-faint); line-height: 1.35; }
+
+/* Cuánto falta. Solo en los bloqueados: convierte el muro de iconos apagados
+   en una lista de objetivos con distancia conocida. */
+.badge-progress {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  width: 100%;
+  margin-top: 0.3rem;
+}
+
+.badge-track {
+  flex: 1;
+  height: 4px;
+  border-radius: var(--r-full);
+  background: var(--surface-3);
+  overflow: hidden;
+}
+
+.badge-fill {
+  display: block;
+  height: 100%;
+  border-radius: var(--r-full);
+  background: linear-gradient(90deg, var(--accent), var(--accent-bright));
+  transition: width 0.7s var(--ease);
+}
+
+.badge-num { font-size: 0.65rem; color: var(--text-faint); white-space: nowrap; }
+
+/* Lo que paga el logro. Se ve también bloqueado: saber lo que está en juego es
+   la mitad del incentivo. Apagado mientras no se ha cobrado, dorado después. */
+.badge-premio {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.22rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.012em;
+  color: var(--text-faint);
+  opacity: 0.8;
+}
+
+.badge.unlocked .badge-premio { color: var(--gold); opacity: 1; }
+
+/* El aro del icono se tiñe según lo que cuesta el logro, así la dificultad se
+   ve antes de leer la cifra. */
+.badge.dif-4 .badge-icon { box-shadow: inset 0 0 0 1px rgba(167, 139, 250, 0.45); }
+.badge.dif-5 .badge-icon { box-shadow: inset 0 0 0 1px rgba(251, 191, 36, 0.55); }
+.badge.dif-4:not(.unlocked) .badge-premio { color: #a78bfa; opacity: 0.95; }
+.badge.dif-5:not(.unlocked) .badge-premio { color: var(--gold); opacity: 0.95; }
+
+.badge-done {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-top: 0.3rem;
+  font-size: 0.66rem;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--gold);
+}
+
+.badge.unlocked {
+  border-color: rgba(251, 191, 36, 0.35);
+  background: linear-gradient(160deg, rgba(251, 191, 36, 0.09), transparent 65%), var(--surface);
+}
+
+.badge.unlocked .badge-icon {
+  background: linear-gradient(140deg, var(--gold), #d97706);
+  color: #2a1a00;
+  box-shadow: 0 4px 14px rgba(251, 191, 36, 0.28);
+}
+
+.badge.unlocked .badge-name { color: var(--text); }
+
+/* --------------------------------------------------------------------------
+   Año completo — un año de días con sus meses y sus días de la semana
+   -------------------------------------------------------------------------- */
+
+.heatmap-panel {
+  padding: 1.25rem;
+  /* Medidas del heatmap en un solo sitio: celdas, hueco y ancho del carril de
+     etiquetas. --hm-semanas lo escribe renderHeatmap() para que la fila de
+     meses y la de celdas no puedan desalinearse. */
+  --hm-celda: 12px;
+  --hm-gap: 3px;
+  --hm-etiquetas: 30px;
+}
+
+.heatmap-resumen {
+  font-size: 0.76rem;
+  color: var(--text-dim);
+  margin-bottom: 0.85rem;
+}
+
+.heatmap-scroll { overflow-x: auto; padding-bottom: 0.5rem; }
+
+/* Rejilla de dos por dos: etiquetas de mes arriba, días a la izquierda. */
+.heatmap-grid {
+  display: grid;
+  grid-template-columns: var(--hm-etiquetas) max-content;
+  grid-template-areas:
+    ".    meses"
+    "dias celdas";
+  gap: 4px 6px;
+  /* El nombre del último mes desborda su columna hacia la derecha; sin este
+     margen lo recortaría el contenedor con scroll. */
+  padding-right: 26px;
+  width: max-content;
+}
+
+.hm-months {
+  grid-area: meses;
+  display: grid;
+  grid-template-columns: repeat(var(--hm-semanas, 53), var(--hm-celda));
+  gap: var(--hm-gap);
+  height: 13px;
+}
+
+/* El nombre del mes es más ancho que su columna: se deja desbordar hacia la
+   derecha, que es donde siguen los días de ese mismo mes. */
+.hm-month {
+  grid-row: 1;
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: var(--text-faint);
+  line-height: 1;
+  white-space: nowrap;
+  overflow: visible;
+  text-transform: capitalize;
+}
+
+.hm-days {
+  grid-area: dias;
+  display: grid;
+  grid-template-rows: repeat(7, var(--hm-celda));
+  gap: var(--hm-gap);
+}
+
+.hm-day {
+  font-size: 0.62rem;
+  color: var(--text-faint);
+  line-height: var(--hm-celda);
+  text-align: right;
+}
+
+.heatmap {
+  grid-area: celdas;
+  display: grid;
+  grid-auto-flow: column;
+  grid-template-rows: repeat(7, var(--hm-celda));
+  gap: var(--hm-gap);
+  width: max-content;
+}
+
+.hm-cell {
+  width: var(--hm-celda);
+  height: var(--hm-celda);
+  border-radius: 2px;
+  background: var(--surface-2);
+}
+
+.hm-cell.l1 { background: rgba(34, 197, 94, 0.28); }
+.hm-cell.l2 { background: rgba(34, 197, 94, 0.5); }
+.hm-cell.l3 { background: rgba(34, 197, 94, 0.72); }
+.hm-cell.l4 { background: var(--accent-bright); }
+.hm-cell.futuro { background: transparent; }
+
+.heatmap-legend {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  justify-content: flex-end;
+  margin-top: 0.75rem;
+  font-size: 0.7rem;
+  color: var(--text-faint);
+}
+
+.hm-key { width: 11px; height: 11px; border-radius: 2px; background: var(--surface-2); }
+.hm-key.l1 { background: rgba(34, 197, 94, 0.28); }
+.hm-key.l2 { background: rgba(34, 197, 94, 0.5); }
+.hm-key.l3 { background: rgba(34, 197, 94, 0.72); }
+.hm-key.l4 { background: var(--accent-bright); }
+
+/* Estadísticas por hábito */
+.habit-stats { display: flex; flex-direction: column; gap: 0.7rem; }
+
+.hs-row {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: 1rem 1.2rem;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.75rem 1.25rem;
+  align-items: center;
+}
+
+.hs-title { display: flex; align-items: center; gap: 0.6rem; font-weight: 620; font-size: 0.95rem; }
+.hs-title .icon { color: var(--habit); }
+
+.hs-numbers { display: flex; align-items: center; gap: 1rem; font-size: 0.8rem; color: var(--text-dim); }
+
+.hs-stat { display: flex; align-items: center; gap: 0.3rem; font-variant-numeric: tabular-nums; }
+.hs-stat .icon { color: var(--text-faint); }
+.hs-stat.flame .icon { color: var(--gold); }
+.hs-stat b { color: var(--text); font-weight: 650; }
+
+.hs-bar { grid-column: 1 / -1; display: flex; align-items: center; gap: 0.75rem; }
+
+.bar-track {
+  flex: 1;
+  height: 7px;
+  border-radius: var(--r-full);
+  background: var(--surface-3);
+  overflow: hidden;
+}
+
+.bar-fill {
+  height: 100%;
+  border-radius: var(--r-full);
+  background: var(--habit);
+  transition: width 0.7s var(--ease);
+}
+
+.bar-pct {
+  font-size: 0.76rem;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+  min-width: 2.6rem;
+  text-align: right;
+}
+
+.hs-weeks { display: flex; align-items: flex-end; gap: 4px; height: 26px; }
+
+.hs-week {
+  width: 9px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--habit) 45%, var(--surface-3));
+}
+
+.hs-week.last { background: var(--habit); }
+
+.hs-meta { font-size: 0.74rem; color: var(--text-faint); }
+
+/* --------------------------------------------------------------------------
+   Notas
+   -------------------------------------------------------------------------- */
+
+/* ---- barra de búsqueda, orden y filtro por etiqueta ---- */
+
+.notas-barra {
+  display: flex;
+  gap: 0.6rem;
+  align-items: center;
+  margin-bottom: 0.7rem;
+  flex-wrap: wrap;
+}
+
+.notas-buscar {
+  flex: 1 1 220px;
+  background: var(--bg-elev);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--r-full);
+  padding: 0.5rem 0.95rem;
+  font: inherit;
+  font-size: 0.85rem;
+  min-height: 38px;
+  transition: border-color 0.2s var(--ease), box-shadow 0.2s var(--ease);
+}
+
+.notas-buscar::placeholder { color: var(--text-faint); }
+.notas-buscar:focus {
+  outline: none;
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+  box-shadow: 0 0 0 3px var(--accent-dim);
+}
+
+/* Fondo y borde vienen del bloque de cristal común. Las <option> sí necesitan
+   un fondo opaco: el desplegable lo pinta el sistema y no hereda el vidrio. */
+.notas-orden {
+  color: var(--text-dim);
+  border-radius: var(--r-full);
+  padding: 0.45rem 0.8rem;
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+  min-height: 38px;
+}
+
+.notas-orden option { background: var(--surface-2); color: var(--text); }
+
+.notas-filtro-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-bottom: 0.55rem;
+}
+
+.tag-filtro {
+  --tag: var(--text-faint);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  background: transparent;
+  border: 1px solid color-mix(in srgb, var(--tag) 35%, var(--border));
+  color: color-mix(in srgb, var(--tag) 70%, var(--text));
+  border-radius: var(--r-full);
+  padding: 0.25rem 0.65rem;
+  font-size: 0.74rem;
+  cursor: pointer;
+  transition: background 0.18s var(--ease), transform 0.15s var(--ease-spring), border-color 0.18s var(--ease);
+}
+
+.tag-filtro:hover { background: color-mix(in srgb, var(--tag) 14%, transparent); transform: translateY(-1px); }
+.tag-filtro.activa {
+  background: color-mix(in srgb, var(--tag) 22%, transparent);
+  border-color: color-mix(in srgb, var(--tag) 60%, transparent);
+  color: var(--text);
+}
+
+.tag-cuenta {
+  font-size: 0.66rem;
+  color: var(--text-faint);
+  background: var(--surface);
+  border-radius: var(--r-full);
+  padding: 0 0.3rem;
+}
+
+.notas-resumen {
+  font-size: 0.74rem;
+  color: var(--text-faint);
+  margin: 0 0 0.6rem;
+}
+
+/* ---- rejilla de notas ---- */
+
+/* Columnas tipo mural: cada nota ocupa lo que necesita y no deja huecos como
+   haría una rejilla de filas iguales. */
+.notas-container {
+  columns: 330px;
+  column-gap: 0.9rem;
+}
+
+.notas-container .empty-state { column-span: all; }
+
+.nota-entry {
+  --nota-color: transparent;
+  position: relative;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: 0.85rem 1rem 0.9rem;
+  margin-bottom: 0.9rem;
+  break-inside: avoid;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  transition: border-color 0.2s var(--ease), transform 0.2s var(--ease), box-shadow 0.2s var(--ease), opacity 0.18s var(--ease);
+}
+
+.nota-entry:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
+.nota-entry:focus-within { border-color: var(--border-strong); box-shadow: var(--shadow-md); }
+
+/* Color de la nota: tinte suave, nunca un bloque plano que tape el texto. */
+.nota-entry.tinte {
+  background:
+    linear-gradient(160deg,
+      color-mix(in srgb, var(--nota-color) 16%, var(--surface)),
+      color-mix(in srgb, var(--nota-color) 7%, var(--surface)));
+  border-color: color-mix(in srgb, var(--nota-color) 32%, var(--border));
+}
+
+.nota-entry.destacada {
+  border-color: color-mix(in srgb, var(--gold) 45%, var(--border));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--gold) 22%, transparent), var(--shadow-sm);
+}
+
+.nota-entry.destacada::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  border-radius: var(--r-lg) 0 0 var(--r-lg);
+  background: linear-gradient(180deg, var(--gold), color-mix(in srgb, var(--gold) 30%, transparent));
+}
+
+@keyframes nota-aparece {
+  from { opacity: 0; transform: translateY(6px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+
+.nota-entry.recien-creada { animation: nota-aparece 0.28s var(--ease-spring); }
+.nota-entry.saliendo { opacity: 0; transform: scale(0.97); }
+
+/* ---- cabecera ---- */
+
+.nota-cabecera {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.nota-fecha { font-size: 0.72rem; color: var(--text-faint); margin-right: auto; }
+
+.nota-destacar {
+  background: transparent;
+  border: none;
+  padding: 0.15rem;
+  cursor: pointer;
+  color: var(--text-faint);
+  display: inline-flex;
+  border-radius: var(--r-sm);
+  transition: color 0.2s var(--ease), transform 0.2s var(--ease-spring);
+}
+
+.nota-destacar:hover { color: var(--gold); transform: scale(1.15) rotate(-8deg); }
+.nota-destacar.activa { color: var(--gold); }
+
+.nota-guardado-indicador {
+  font-size: 0.7rem;
+  color: var(--accent-bright);
+  opacity: 0;
+  transform: translateY(2px);
+  transition: opacity 0.25s var(--ease), transform 0.25s var(--ease);
+  white-space: nowrap;
+}
+
+.nota-guardado-indicador.visible { opacity: 1; transform: none; }
+
+/* ---- título ----
+   Centrado y en peso alto: es lo que convierte un bloque de texto en un
+   documento con nombre. Sin borde ni fondo mientras no se toca, para que una
+   nota sin título no parezca un formulario a medio llenar. */
+.nota-titulo {
+  width: 100%;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 1.05rem;
+  font-weight: 800;
+  letter-spacing: -0.015em;
+  text-align: center;
+  padding: 0.15rem 0.2rem 0.35rem;
+  margin-bottom: 0.15rem;
+}
+
+.nota-titulo::placeholder { color: var(--text-faint); font-weight: 600; }
+.nota-titulo:hover { border-bottom-color: var(--border); }
+
+.nota-titulo:focus {
+  outline: none;
+  border-bottom-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+}
+
+/* ---- lienzo: piezas colocadas libremente ---- */
+
+.nota-lienzo {
+  position: relative;
+  min-height: 220px;
+  border-radius: var(--r-md);
+  /* Cuadrícula tenue: da referencia para colocar sin llegar a ser una rejilla
+     de verdad, y deja claro de un vistazo que este modo es distinto. */
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.028) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.028) 1px, transparent 1px);
+  background-size: 22px 22px;
+  border: 1px dashed var(--border);
+  /* `clip` recorta igual que `hidden` pero sin crear un contenedor de scroll, y
+     el margen le deja un respiro por fuera: el asa asoma 9px por arriba de su
+     pieza y la equis 9px por la derecha, así que una pieza pegada al borde
+     perdía sus dos controles justo cuando más falta hacen. 16px cubre ambos
+     con holgura sin que la cuadrícula se salga del borde punteado. */
+  overflow: clip;
+  overflow-clip-margin: 16px;
+}
+
+.lienzo-pista {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  text-align: center;
+  font-size: 0.78rem;
+  color: var(--text-faint);
+  pointer-events: none;
+  max-width: 40ch;
+  margin-inline: auto;
+}
+
+.lienzo-item {
+  position: absolute;
+  min-width: 60px;
+  border-radius: var(--r-sm);
+  border: 1px solid transparent;
+  transition: border-color 0.15s var(--ease), box-shadow 0.15s var(--ease);
+}
+
+.lienzo-item:hover { border-color: var(--border-strong); }
+.lienzo-item:focus-within { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }
+
+/* Mientras se arrastra, la pieza se despega del papel. */
+.lienzo-item.moviendo {
+  box-shadow: var(--shadow-lg);
+  border-color: var(--accent);
+  cursor: grabbing;
+  z-index: 2;
+}
+
+/* Al medir se marca igual, pero sin despegarse: no se está moviendo de sitio,
+   se está ajustando en el sitio donde ya está. */
+.lienzo-item.midiendo {
+  border-color: var(--accent);
+  z-index: 2;
+}
+
+/* El asa es lo que separa mover de escribir: sin ella, arrastrar dentro de un
+   texto editable seleccionaría letras en vez de mover la pieza. */
+.li-asa {
+  position: absolute;
+  top: -9px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 18px;
+  border-radius: var(--r-full);
+  background: var(--surface-3);
+  border: 1px solid var(--border-strong);
+  color: var(--text-faint);
+  cursor: grab;
+  opacity: 0;
+  transition: opacity 0.15s var(--ease), color 0.15s var(--ease);
+  touch-action: none;   /* el navegador no debe robar el gesto para hacer scroll */
+}
+
+.lienzo-item:hover .li-asa,
+.lienzo-item:focus-within .li-asa,
+.lienzo-item.moviendo .li-asa { opacity: 1; }
+.li-asa:hover { color: var(--text); }
+
+.li-x {
+  position: absolute;
+  top: -9px;
+  right: -9px;
+  width: 24px;
+  height: 24px;
+  opacity: 0;
+  transition: opacity 0.15s var(--ease);
+}
+
+.lienzo-item:hover .li-x, .li-x:focus-visible { opacity: 1; }
+
+/* Tirador de ancho, en el canto derecho. Solo ancho: el alto de una pieza lo
+   decide su contenido —el texto por las líneas que ocupa, la imagen por su
+   proporción—, así que un tirador de esquina prometería un control sobre el
+   alto que no existe. Va en el canto entero y no en un punto para que no haya
+   que apuntar: se agarra en cualquier altura de la pieza. */
+.li-ancho {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: -5px;
+  width: 10px;
+  border-radius: var(--r-full);
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: ew-resize;
+  opacity: 0;
+  transition: opacity 0.15s var(--ease), background 0.15s var(--ease);
+  touch-action: none;   /* el gesto es nuestro, no del scroll del navegador */
+}
+
+/* La barrita solo se dibuja al acercarse: en reposo la pieza no lleva marco. */
+.li-ancho::before {
+  content: '';
+  position: absolute;
+  top: 25%;
+  bottom: 25%;
+  left: 4px;
+  width: 2px;
+  border-radius: var(--r-full);
+  background: var(--border-strong);
+}
+
+.lienzo-item:hover .li-ancho,
+.lienzo-item:focus-within .li-ancho,
+.li-ancho:focus-visible { opacity: 1; }
+
+.li-ancho:hover::before, .lienzo-item.midiendo .li-ancho::before { background: var(--accent); }
+.lienzo-item.midiendo .li-ancho { opacity: 1; }
+
+/* Mientras se mide, el ancho se ve en cifras: colocar a ojo está bien para la
+   posición, pero al igualar dos piezas se quiere el número. Con el tirador
+   enfocado también se muestra: ajustando con las flechas la cifra es lo único
+   que dice cuánto te has movido. */
+.lienzo-item.midiendo::after,
+.lienzo-item:has(.li-ancho:focus-visible)::after {
+  content: attr(data-ancho);
+  position: absolute;
+  top: -10px;
+  right: 10px;
+  padding: 1px 7px;
+  border-radius: var(--r-full);
+  background: var(--surface-3);
+  border: 1px solid var(--border-strong);
+  color: var(--text-dim);
+  font-size: 0.68rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.li-txt {
+  padding: 0.35rem 0.5rem;
+  outline: none;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  min-height: 1.5em;
+}
+
+.li-txt:empty::before { content: attr(data-placeholder); color: var(--text-faint); }
+
+.li-img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: var(--r-sm);
+  user-select: none;
+}
+
+/* La barra de formato sí aplica en lienzo: actúa sobre la pieza de texto en la
+   que estés. Antes se apagaba aquí porque los botones apuntaban siempre al
+   editor de texto corrido, que en lienzo está oculto; ahora apuntan a la pieza
+   activa y no hay motivo para desactivarlos. */
+
+.nt-layout.activa .nt-layout-txt { color: var(--accent-bright); }
+
+/* ---- barra de formato ---- */
+
+.nota-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  flex-wrap: wrap;
+  padding-bottom: 0.15rem;
+  border-bottom: 1px solid var(--border);
+  opacity: 0.5;
+  transition: opacity 0.2s var(--ease);
+}
+
+.nota-entry:hover .nota-toolbar,
+.nota-entry:focus-within .nota-toolbar { opacity: 1; }
+
+.nt-grupo { display: inline-flex; gap: 0.15rem; }
+
+.nt-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-dim);
+  border-radius: var(--r-sm);
+  min-height: 28px;
+  padding: 0.2rem 0.45rem;
+  font-size: 0.78rem;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  transition: background 0.15s var(--ease), color 0.15s var(--ease), border-color 0.15s var(--ease);
+}
+
+/* Los botones de la barra de notas son muchos y pequeños: en reposo son
+   invisibles y solo cuajan en cristal al pasar por encima o al estar activos. */
+.nt-btn:hover {
+  background: var(--glass-bg-hover);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border-color: var(--glass-border);
+  box-shadow: var(--glass-shine);
+  color: var(--text);
+}
+
+.nt-btn.activa {
+  background: var(--accent-dim);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+  box-shadow: var(--glass-shine);
+  color: var(--accent-bright);
+}
+
+.nt-btn b, .nt-btn i, .nt-btn u, .nt-btn s { font-size: 0.86rem; line-height: 1; }
+
+.nt-swatch {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.nt-color-muestra {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1px solid var(--border-strong);
+  display: inline-block;
+}
+
+.nt-fuente-actual, .nt-tamano-actual {
+  max-width: 96px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---- desplegables de la barra ---- */
+
+.nt-pop { position: relative; display: inline-flex; }
+
+.nt-panel {
+  position: fixed;   /* la posición exacta la calcula abrirPopover() */
+  top: 0;
+  left: 0;
+  z-index: 60;
+  min-width: 190px;
+  /* Flota sobre el contenido: un vidrio más opaco que los botones para que el
+     texto de dentro siga siendo legible sobre cualquier fondo. */
+  background: rgba(20, 20, 20, 0.72);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid var(--glass-border-hover);
+  border-radius: var(--r-md);
+  box-shadow: var(--glass-shine), var(--shadow-lg);
+  padding: 0.6rem;
+  display: none;
+  /* Se materializa: el desenfoque y la escala se mueven juntos desde el punto
+     del botón que lo abrió (transformOrigin lo fija abrirPopover). Llega como
+     un material que cuaja, no como una capa que se funde. */
+  animation: panel-cuaja 0.2s var(--ease);
+}
+
+.nt-panel.abierto { display: block; }
+
+@keyframes panel-cuaja {
+  from { opacity: 0; transform: scale(0.9); filter: blur(6px); }
+  to { opacity: 1; transform: none; filter: blur(0); }
+}
+
+.nt-panel-titulo {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-faint);
+  margin: 0.35rem 0 0.35rem;
+}
+
+.nt-panel-titulo:first-child { margin-top: 0; }
+
+.nt-panel-fuentes { width: 250px; max-height: 320px; overflow-y: auto; }
+
+.nt-grupo-titulo {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-faint);
+  margin: 0.5rem 0 0.3rem;
+}
+
+.nt-grupo-titulo:first-child { margin-top: 0; }
+
+.nt-fuentes { display: flex; flex-direction: column; gap: 0.15rem; }
+
+.nt-fuente {
+  display: flex;
+  align-items: baseline;
+  gap: 0.55rem;
+  width: 100%;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  color: var(--text);
+  padding: 0.3rem 0.45rem;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s var(--ease);
+}
+
+.nt-fuente:hover { background: var(--surface); }
+.nt-fuente.activa { background: var(--accent-dim); border-color: color-mix(in srgb, var(--accent) 35%, transparent); }
+.nt-fuente-muestra { font-size: 1.05rem; }
+.nt-fuente .nt-fuente-nombre { font-family: var(--font); font-size: 0.74rem; color: var(--text-dim); }
+
+.nt-resaltadores { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+
+.nt-resaltador {
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  width: 34px;
+  height: 26px;
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-weight: 700;
+  transition: transform 0.15s var(--ease-spring);
+}
+
+.nt-resaltador:hover { transform: scale(1.08); }
+
+.nt-quitar {
+  margin-top: 0.45rem;
+  width: 100%;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  border-radius: var(--r-sm);
+  padding: 0.32rem;
+  font-size: 0.74rem;
+  cursor: pointer;
+  transition: background 0.15s var(--ease), color 0.15s var(--ease);
+}
+
+.nt-quitar:hover { background: var(--surface); color: var(--text); }
+
+.nt-tamanos { display: flex; flex-direction: column; gap: 0.15rem; }
+
+.nt-tamano {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  color: var(--text);
+  padding: 0.3rem 0.45rem;
+  text-align: left;
+  cursor: pointer;
+  font-size: 0.8rem;
+  transition: background 0.15s var(--ease);
+}
+
+.nt-tamano:hover { background: var(--surface); }
+.nt-tamano.activa { background: var(--accent-dim); border-color: color-mix(in srgb, var(--accent) 35%, transparent); }
+
+/* Rueda de colores compartida con el editor de hábitos. */
+.nota-colores { display: flex; align-items: center; gap: 0.35rem; flex-wrap: wrap; }
+
+/* La paleta de hábitos es larga y va ordenada por tono: en rejilla se lee como
+   un espectro y se recorre de un vistazo, cosa que con flex-wrap se perdía. */
+.swatches {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(28px, 1fr));
+  gap: 0.4rem;
+  align-items: center;
+}
+
+/* El .field ya separa con `gap`; sin margen propio para no sumar dos huecos. */
+.field-hint {
+  font-size: 0.74rem;
+  color: var(--text-dim);
+  letter-spacing: 0.012em;
+}
+
+.color-dot {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  padding: 0;
+  justify-self: center;
+  transition: transform 0.15s var(--ease-spring), border-color 0.2s var(--ease);
+}
+
+.color-dot:hover { transform: scale(1.12); }
+.color-dot.selected { border-color: var(--text); box-shadow: 0 0 0 2px var(--bg); }
+.color-dot.sin-color {
+  border: 1px dashed var(--border-strong);
+  position: relative;
+}
+.color-dot.sin-color::after {
+  content: "";
+  position: absolute;
+  inset: 4px;
+  border-top: 1px solid var(--text-faint);
+  transform: rotate(-45deg);
+  transform-origin: center;
+}
+
+/* Selects compartidos con el editor de hábitos. */
+.nota-toolbar select,
+.field select,
+.field input[type="time"],
+.field input[type="text"] {
+  background: var(--bg-elev);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  padding: 0.4rem 0.6rem;
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+  min-height: 36px;
+}
+
+.field input[type="text"] { cursor: text; width: 100%; }
+
+/* color-scheme hace que el reloj que despliega el navegador salga oscuro; sin
+   esto, el desplegable nativo llega en blanco y ciega. */
+.field input[type="time"] { color-scheme: dark; }
+
+.recordatorio-fila { display: flex; align-items: center; gap: 0.5rem; }
+
+/* El punto ámbar de «te falta activar los avisos». Va en la esquina contraria
+   al contador de avisos sin leer para que los dos puedan convivir. */
+.campana.pide-permiso::after {
+  content: "";
+  position: absolute;
+  left: 3px;
+  bottom: 3px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #f59e0b;
+  box-shadow: 0 0 0 2px var(--bg);
+}
+
+/* ---- cuerpo editable ---- */
+
+.nota-editor {
+  --nota-fs: 1rem;
+  background: transparent;
+  border: none;
+  padding: 0.15rem 0;
+  min-height: 84px;
+  width: 100%;
+  font-size: calc(var(--nota-fs) * var(--nota-fs-mult, 1));
+  line-height: 1.65;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.nota-editor:focus, .nota-editor:focus-visible { outline: none; }
+
+.nota-editor:empty::before {
+  content: attr(data-placeholder);
+  color: var(--text-faint);
+  pointer-events: none;
+}
+
+.nota-editor ul, .nota-editor ol { padding-left: 1.3rem; margin: 0.2rem 0; }
+.nota-editor blockquote {
+  margin: 0.3rem 0;
+  padding-left: 0.7rem;
+  border-left: 2px solid var(--border-strong);
+  color: var(--text-dim);
+}
+.nota-editor code {
+  font-family: "Cascadia Mono", Consolas, monospace;
+  font-size: 0.9em;
+  background: var(--bg-elev);
+  border-radius: 4px;
+  padding: 0.05em 0.3em;
+}
+
+/* Resaltadores: fondo vivo y texto oscuro, como un marcador de verdad. */
+.hl { border-radius: 3px; padding: 0 0.15em; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
+.hl-amarillo { background: #fde68a; color: #1c1607; }
+.hl-verde    { background: #86efac; color: #052e16; }
+.hl-azul     { background: #93c5fd; color: #082f49; }
+.hl-rosa     { background: #f9a8d4; color: #3b0a2a; }
+.hl-naranja  { background: #fdba74; color: #3a1a06; }
+.hl-violeta  { background: #c4b5fd; color: #241a4d; }
+
+/* Tipografías de las notas. Las de Google caen en la alternativa del sistema
+   si no hay conexión. */
+.nota-font-sans { font-family: var(--font); }
+.nota-font-serif { font-family: Georgia, "Times New Roman", serif; }
+.nota-font-mono { font-family: "Cascadia Mono", Consolas, "SF Mono", Menlo, monospace; }
+.nota-font-rounded { font-family: "Trebuchet MS", Verdana, sans-serif; }
+
+.nota-font-inter { font-family: "Inter", var(--font); }
+.nota-font-poppins { font-family: "Poppins", var(--font); }
+.nota-font-nunito { font-family: "Nunito", var(--font); }
+.nota-font-worksans { font-family: "Work Sans", var(--font); }
+.nota-font-grotesk { font-family: "Space Grotesk", var(--font); }
+
+.nota-font-playfair { font-family: "Playfair Display", Georgia, serif; }
+.nota-font-lora { font-family: "Lora", Georgia, serif; }
+.nota-font-merriweather { font-family: "Merriweather", Georgia, serif; }
+.nota-font-baskerville { font-family: "Libre Baskerville", Georgia, serif; }
+
+.nota-font-jetbrains { font-family: "JetBrains Mono", Consolas, monospace; }
+.nota-font-plexmono { font-family: "IBM Plex Mono", Consolas, monospace; }
+
+.nota-font-caveat { font-family: "Caveat", "Segoe Script", cursive; --nota-fs-mult: 1.35; }
+.nota-font-indie { font-family: "Indie Flower", "Segoe Print", cursive; --nota-fs-mult: 1.15; }
+.nota-font-dancing { font-family: "Dancing Script", "Segoe Script", cursive; --nota-fs-mult: 1.2; }
+.nota-font-shadows { font-family: "Shadows Into Light", "Segoe Print", cursive; --nota-fs-mult: 1.2; }
+
+.nota-font-bebas { font-family: "Bebas Neue", Impact, sans-serif; --nota-fs-mult: 1.2; letter-spacing: 0.02em; }
+.nota-font-oswald { font-family: "Oswald", "Arial Narrow", sans-serif; }
+
+.nota-size-sm { --nota-fs: 0.85rem; }
+.nota-size-md { --nota-fs: 1rem; }
+.nota-size-lg { --nota-fs: 1.25rem; }
+.nota-size-xl { --nota-fs: 1.55rem; }
+
+/* ---- etiquetas de la nota ---- */
+
+.nota-tags {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-top: auto;
+}
+
+.nota-tags-lista { display: contents; }
+
+.nota-tag {
+  --tag: var(--accent);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  background: color-mix(in srgb, var(--tag) 16%, transparent);
+  border: 1px solid color-mix(in srgb, var(--tag) 38%, transparent);
+  color: color-mix(in srgb, var(--tag) 65%, var(--text));
+  border-radius: var(--r-full);
+  padding: 0.12rem 0.5rem;
+  font-size: 0.71rem;
+  max-width: 100%;
+}
+
+.nota-tag-txt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.nota-tag-x {
+  background: transparent;
+  border: none;
+  color: inherit;
+  opacity: 0.55;
+  cursor: pointer;
+  padding: 0;
+  display: inline-flex;
+  transition: opacity 0.15s var(--ease), transform 0.15s var(--ease-spring);
+}
+
+.nota-tag-x:hover { opacity: 1; transform: scale(1.2); }
+
+.nota-tag-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  background: transparent;
+  border: 1px dashed var(--border-strong);
+  color: var(--text-faint);
+  border-radius: var(--r-full);
+  padding: 0.12rem 0.5rem;
+  font-size: 0.71rem;
+  cursor: pointer;
+  transition: color 0.15s var(--ease), border-color 0.15s var(--ease), background 0.15s var(--ease);
+}
+
+.nota-tag-add:hover { color: var(--text); border-color: var(--text-faint); background: var(--bg-elev); }
+
+.nota-tag-input {
+  background: var(--bg-elev);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-full);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.71rem;
+  padding: 0.15rem 0.55rem;
+  width: 150px;
+}
+
+.nota-tag-input:focus { outline: none; border-color: color-mix(in srgb, var(--accent) 55%, var(--border)); }
+
+/* ---- confirmación de borrado ---- */
+
+.nota-confirmar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  font-size: 0.78rem;
+  color: var(--text-dim);
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--danger) 30%, transparent);
+  border-radius: var(--r-md);
+  padding: 0.5rem 0.65rem;
+  animation: nota-aparece 0.18s var(--ease);
+}
+
+/* --------------------------------------------------------------------------
+   Gestión de hábitos
+   -------------------------------------------------------------------------- */
+
+.habitos-lista { display: flex; flex-direction: column; gap: 0.6rem; }
+
+.habito-row {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: 0.85rem 1rem;
+  transition: border-color 0.2s var(--ease);
+}
+
+.habito-row:hover { border-color: var(--border-strong); }
+
+.habito-swatch {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--r-md);
+  background: color-mix(in srgb, var(--habit) 18%, transparent);
+  color: var(--habit);
+  flex-shrink: 0;
+}
+
+.habito-info { flex: 1; min-width: 0; }
+.habito-nombre { font-weight: 620; font-size: 0.95rem; }
+.habito-sub { font-size: 0.74rem; color: var(--text-faint); }
+
+.habito-acciones { display: flex; align-items: center; gap: 0.3rem; }
+
+.habito-acciones .icon-btn { width: 36px; height: 36px; }
+
+.editor { margin-bottom: 1.25rem; display: flex; flex-direction: column; gap: 1.1rem; }
+
+.editor-title { font-size: 0.95rem; font-weight: 650; }
+
+.field { display: flex; flex-direction: column; gap: 0.45rem; }
+
+.field-label {
+  font-size: 0.72rem;
+  font-weight: 650;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.icon-picker {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(46px, 1fr));
+  gap: 6px;
+  max-height: 196px;
+  overflow-y: auto;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--bg-elev);
+}
+
+.icon-option {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 1;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--glass-border);
+  background: var(--glass-bg);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  box-shadow: var(--glass-shine);
+  color: var(--text-faint);
+  cursor: pointer;
+  transition: background 0.15s var(--ease), color 0.15s var(--ease), border-color 0.15s var(--ease);
+}
+
+.icon-option:hover { background: var(--glass-bg-hover); border-color: var(--glass-border-hover); color: var(--text); }
+
+.icon-option.selected {
+  border-color: var(--habit);
+  background: color-mix(in srgb, var(--habit) 18%, transparent);
+  color: var(--habit);
+}
+
+.editor-actions { display: flex; gap: 0.6rem; flex-wrap: wrap; }
+
+.editor-preview {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.7rem 0.9rem;
+  border-radius: var(--r-md);
+  border: 1px dashed var(--border-strong);
+  color: var(--text-dim);
+  font-size: 0.82rem;
+}
+
+.confirm-inline {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  font-size: 0.82rem;
+  color: var(--text-dim);
+}
+
+/* --------------------------------------------------------------------------
+   Celebración
+   -------------------------------------------------------------------------- */
+
+#confetti-canvas {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: var(--z-celebrate);
+}
+
+.point-popup {
+  position: fixed;
+  pointer-events: none;
+  font-weight: 800;
+  font-size: 1.05rem;
+  color: var(--accent-bright);
+  text-shadow: 0 0 12px rgba(74, 222, 128, 0.55);
+  z-index: var(--z-celebrate);
+  animation: point-float 1s var(--ease) forwards;
+}
+
+.point-popup.bonus { font-size: 1.45rem; color: var(--gold); text-shadow: 0 0 14px rgba(251, 191, 36, 0.55); }
+
+@keyframes point-float {
+  0% { opacity: 0; transform: translate(-50%, 0) scale(0.8); }
+  15% { opacity: 1; transform: translate(-50%, -10px) scale(1.05); }
+  100% { opacity: 0; transform: translate(-50%, -56px) scale(1); }
+}
+
+#perfect-day-flash {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 40;
+  /* Dorado, no verde: el destello y los bordes que viran son el mismo suceso,
+     así que comparten color. */
+  background: radial-gradient(circle at 50% 40%, rgba(251, 191, 36, 0.22), transparent 68%);
+  opacity: 0;
+}
+
+#perfect-day-flash.flashing { animation: perfect-flash 1.2s var(--ease); }
+
+@keyframes perfect-flash {
+  0% { opacity: 0; }
+  18% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+.levelup-overlay {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  z-index: var(--z-celebrate);
+  background: rgba(0, 0, 0, 0.62);
+  backdrop-filter: blur(3px);
+  animation: fade-in 0.3s var(--ease);
+}
+
+.levelup-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 2rem 2.75rem;
+  border-radius: var(--r-xl);
+  background: linear-gradient(160deg, var(--surface-2), var(--surface));
+  border: 1px solid rgba(251, 191, 36, 0.4);
+  box-shadow: var(--shadow-lg), 0 0 60px rgba(251, 191, 36, 0.2);
+  animation: levelup-pop 0.6s var(--ease-spring);
+}
+
+.levelup-icon { color: var(--gold); }
+.levelup-title { font-size: 1.6rem; font-weight: 800; letter-spacing: -0.02em; }
+.levelup-sub { font-size: 0.85rem; color: var(--text-dim); }
+
+@keyframes levelup-pop {
+  0% { opacity: 0; transform: scale(0.85) translateY(12px); }
+  100% { opacity: 1; transform: none; }
+}
+
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 1.75rem;
+  transform: translateX(-50%);
+  z-index: var(--z-pop);
+  background: var(--surface-3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-full);
+  padding: 0.6rem 1.2rem;
+  font-size: 0.85rem;
+  box-shadow: var(--shadow-md);
+  animation: toast-in 0.3s var(--ease);
+}
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translate(-50%, 10px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+
+/* --------------------------------------------------------------------------
+   Perfiles
+   La app la comparten varias personas por la red de casa. Aquí va lo que dice
+   quién eres: el chip de la cabecera y la pantalla de entrada. El color lo
+   pone siempre la persona, igual que en la tabla de la casa.
+   -------------------------------------------------------------------------- */
+
+.perfil-chip {
+  --persona: var(--accent);
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-shrink: 0;
+  height: var(--barra-alto);
+  padding: 0 0.7rem 0 0.35rem;
+  border-radius: var(--r-full);
+  color: var(--text);
+  font-size: 0.85rem;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.perfil-avatar {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--persona);
+  color: #08090b;
+  font-size: 0.85rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.perfil-nombre { max-width: 9ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---- pantalla de «quién eres» ---- */
+
+/* Tapa la app entera: hasta que no se elige perfil no hay nada detrás que
+   mirar, y mostrar los datos de otra persona por un instante sería peor. */
+.selector {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-celebrate);
+  display: grid;
+  place-items: center;
+  padding: 2rem 1.25rem;
+  overflow-y: auto;
+  background: rgba(0, 0, 0, 0.88);
+  -webkit-backdrop-filter: blur(22px) saturate(140%);
+  backdrop-filter: blur(22px) saturate(140%);
+  animation: view-in 0.3s var(--ease);
+}
+
+.selector-caja {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.9rem;
+  width: min(560px, 100%);
+  padding: 2rem 1.75rem;
+  border-radius: var(--r-xl);
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  box-shadow: var(--shadow-lg);
+  text-align: center;
+}
+
+.selector-marca { display: grid; place-items: center; }
+.selector-title { font-size: 1.5rem; font-weight: 800; letter-spacing: -0.025em; }
+.selector-sub { font-size: 0.88rem; color: var(--text-dim); max-width: 46ch; line-height: 1.55; }
+
+.selector-perfiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(116px, 1fr));
+  gap: 0.7rem;
+  width: 100%;
+  margin-top: 0.35rem;
+}
+
+.selector-perfil {
+  --persona: var(--accent);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 1.1rem 0.7rem;
+  border-radius: var(--r-lg);
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+  transition: border-color 0.2s var(--ease), background 0.2s var(--ease), transform 0.2s var(--ease);
+}
+
+.selector-perfil:hover {
+  border-color: var(--persona);
+  background: color-mix(in srgb, var(--persona) 12%, var(--surface-2));
+}
+
+.selector-perfil.actual { border-color: var(--persona); }
+.selector-perfil-nombre { font-size: 0.92rem; font-weight: 650; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+
+.casa-avatar.grande { width: 52px; height: 52px; font-size: 1.35rem; }
+
+.selector-nuevo { width: 100%; display: flex; justify-content: center; }
+.selector-form { width: 100%; display: flex; flex-direction: column; gap: 1rem; text-align: left; }
+.selector-form .editor-actions { justify-content: flex-start; }
+.selector-cerrar { margin-top: 0.2rem; }
+
+/* ---- contraseñas ----
+   El candado se pinta en el color de la persona, como todo lo demás suyo, y
+   se queda pequeño: es una marca, no un aviso. Que un perfil esté cerrado no
+   es un problema que resolver, es una decisión de alguien. */
+
+.selector-perfil { position: relative; }
+
+/* Sobre la superficie de la tarjeta, el candado en color de persona se perdía.
+   Con su propio disco detrás se lee como una insignia y no como una mota. */
+.selector-candado {
+  position: absolute;
+  top: 0.55rem;
+  right: 0.55rem;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--persona) 18%, var(--bg-elev));
+  color: var(--persona);
+}
+
+.selector-perfil.pidiendo {
+  border-color: var(--persona);
+  background: color-mix(in srgb, var(--persona) 12%, var(--surface-2));
+}
+
+.selector-clave { width: 100%; }
+
+.selector-clave-caja {
+  --persona: var(--accent);
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  padding: 1rem 1.1rem;
+  border-radius: var(--r-lg);
+  border: 1px solid var(--persona);
+  background: color-mix(in srgb, var(--persona) 8%, var(--surface-2));
+  text-align: left;
+  animation: view-in 0.2s var(--ease);
+}
+
+.selector-clave-quien {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  color: var(--text-dim);
+}
+
+.selector-clave-quien b { color: var(--text); }
+.selector-clave-quien .icon { color: var(--persona); flex: none; }
+.selector-clave-caja .editor-actions { justify-content: flex-start; }
+
+/* Los campos de contraseña no son input[type="text"], así que no los alcanza
+   la regla compartida de arriba: heredan aquí el mismo aspecto para que no se
+   note que son de otra familia. */
+.selector-clave-input,
+.clave-input,
+#selector-clave-nueva {
+  width: 100%;
+  background: var(--bg-elev);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  padding: 0.4rem 0.6rem;
+  font: inherit;
+  font-size: 0.8rem;
+  min-height: 36px;
+  letter-spacing: 0.08em;
+}
+
+.selector-clave-input::placeholder,
+.clave-input::placeholder,
+#selector-clave-nueva::placeholder { letter-spacing: normal; }
+
+.selector-clave-input:focus-visible,
+.clave-input:focus-visible,
+#selector-clave-nueva:focus-visible { border-color: var(--persona, var(--accent)); }
+
+.field-opt {
+  font-weight: 500;
+  color: var(--text-faint);
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+/* La sección de contraseña del editor va separada del nombre y el color por
+   una línea: son dos guardados distintos y el botón de cada uno hace una cosa
+   distinta. Sin la línea parecen el mismo formulario. */
+.clave-field {
+  margin-top: 1.1rem;
+  padding-top: 1.1rem;
+  border-top: 1px solid var(--border);
+  gap: 0.6rem;
+}
+
+.clave-field .field-label { display: flex; align-items: center; gap: 0.35rem; }
+.clave-field .field-label .icon { color: var(--text-dim); }
+
+.casa-candado {
+  display: inline-grid;
+  place-items: center;
+  margin-left: 0.35rem;
+  vertical-align: -1px;
+  color: var(--persona);
+  opacity: 0.8;
+}
+
+/* --------------------------------------------------------------------------
+   La liga
+   La tabla de la casa en Hoy. Mismo lenguaje que la sección Casa: el color lo
+   pone la persona y las superficies se quedan en el gris neutro. La única
+   diferencia es que aquí hay un orden, y el orden se ve.
+   -------------------------------------------------------------------------- */
+
+.liga-panel { margin-bottom: 1.25rem; }
+
+.liga-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.9rem;
+}
+
+.liga-title { font-size: 0.72rem; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-dim); }
+.liga-sub { font-size: 0.74rem; color: var(--text-faint); }
+.liga-vacia { font-size: 0.82rem; color: var(--text-dim); line-height: 1.55; }
+
+.liga-tabla { display: flex; flex-direction: column; gap: 0.4rem; }
+
+.liga-fila {
+  --persona: var(--accent);
+  display: grid;
+  grid-template-columns: 1.6rem auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.6rem 0.85rem;
+  border-radius: var(--r-md);
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+}
+
+/* Tu propia fila se marca con la barra de color a la izquierda, igual que en
+   la lista de la casa: en una tabla de cinco personas, encontrarte tiene que
+   costar cero. */
+.liga-fila.yo {
+  border-color: color-mix(in srgb, var(--persona) 45%, var(--border));
+  box-shadow: inset 3px 0 0 0 var(--persona);
+}
+
+.liga-puesto { font-size: 0.9rem; font-weight: 800; color: var(--text-faint); text-align: center; }
+.liga-fila:first-child .liga-puesto { color: var(--persona); }
+
+.liga-quien { display: flex; flex-direction: column; gap: 0.1rem; min-width: 0; }
+.liga-quien b { font-size: 0.88rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.liga-hoy { font-size: 0.7rem; color: var(--text-faint); }
+.liga-hoy.listo { color: var(--persona); font-weight: 700; }
+
+.liga-dato { display: flex; flex-direction: column; align-items: flex-end; gap: 0.05rem; }
+.liga-dato b { font-size: 1.05rem; font-weight: 800; line-height: 1; }
+.liga-dato span { font-size: 0.64rem; color: var(--text-faint); white-space: nowrap; }
+.liga-fila:first-child .liga-dato:first-of-type b { color: var(--persona); }
+
+/* ---- la campana y la bandeja de avisos ----
+   La campana va en la barra de arriba, al lado del perfil: es lo único de la
+   app que reclama atención, y tiene que estar donde se mira al entrar. El
+   punto rojo lleva el número porque «tienes avisos» y «tienes siete» son dos
+   cosas distintas cuando decides si abrir. */
+
+.campana {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: color 0.2s var(--ease), border-color 0.2s var(--ease);
+}
+
+.campana:hover { color: var(--text); border-color: var(--border-strong); }
+.campana.con-avisos { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }
+
+.campana-punto {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 0.25rem;
+  border-radius: 999px;
+  background: var(--danger);
+  color: #fff;
+  font-size: 0.6rem;
+  font-weight: 800;
+  line-height: 17px;
+  text-align: center;
+}
+
+.avisos {
+  position: absolute;
+  top: 58px;
+  right: 1rem;
+  z-index: var(--z-menu, 60);
+  width: min(360px, calc(100vw - 2rem));
+  max-height: min(60vh, 460px);
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--r-lg);
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+  animation: view-in 0.16s var(--ease);
+}
+
+.avisos-cab {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.7rem 0.85rem;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.82rem;
+}
+
+.avisos-cab .btn { padding: 0.25rem 0.6rem; font-size: 0.7rem; }
+
+/* Lo que falta para que lleguen los avisos. Se lee como una nota al pie de la
+   cabecera y no como el primer elemento de la lista: mismo margen que el resto
+   del panel, un punto más apagado, y una raya que lo separa de lo que sí son
+   avisos de verdad. */
+.avisos-estado {
+  margin: 0;
+  padding: 0.65rem 0.85rem;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.76rem;
+  line-height: 1.5;
+  color: var(--text-dim);
+}
+.avisos-lista { overflow-y: auto; padding: 0.4rem; }
+.avisos-vacio { padding: 0.9rem 0.7rem; font-size: 0.78rem; color: var(--text-dim); line-height: 1.55; }
+
+.aviso {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.5rem 0.55rem;
+  border-radius: var(--r-sm);
+  font-size: 0.78rem;
+}
+
+/* Los que no has visto llevan una barra a la izquierda en vez de un fondo:
+   una lista con la mitad de las filas de otro color se lee como dos listas. */
+.aviso.nuevo { box-shadow: inset 2px 0 0 0 var(--accent); }
+.aviso.nuevo .aviso-texto { color: var(--text); font-weight: 600; }
+.aviso-icono { display: grid; place-items: center; color: var(--text-faint); }
+/* Lo que hizo una persona va encendido; lo que se movió en la casa, apagado.
+   Entre encendidos distingue el dibujo —el visto de una marca, la diana de un
+   reto—, que es lo que se lee antes que el texto. */
+.aviso.tipo-reto .aviso-icono,
+.aviso.tipo-marca .aviso-icono { color: var(--accent); }
+.aviso-texto { color: var(--text-dim); line-height: 1.4; }
+.aviso-cuando { font-size: 0.64rem; color: var(--text-faint); white-space: nowrap; }
+
+@media (max-width: 620px) {
+  .avisos { right: 0.5rem; left: 0.5rem; width: auto; }
+}
+
+/* ---- el color de cada liga ----
+   Una sola declaración por escalón, y de ahí salen la etiqueta, el emblema y
+   la barra de Progreso. Estaba repetido en cuatro sitios, y cuando la escalera
+   creció de siete ligas a nueve, Radiante cambió de índice y se quedó sin
+   color en dos de ellos: gris. Así ya no puede volver a descuadrarse.
+   La progresión sigue la de Valorant: gris, marrón, gris claro, oro, cian,
+   morado, verde, rojo y oro pálido. */
+
+.rango.liga-0, .rango-icono.liga-0, .hs-rango.liga-0, .peldaño.liga-0 { --liga: #6b7280; }
+.rango.liga-1, .rango-icono.liga-1, .hs-rango.liga-1, .peldaño.liga-1 { --liga: #a9714b; }
+.rango.liga-2, .rango-icono.liga-2, .hs-rango.liga-2, .peldaño.liga-2 { --liga: #dbe3ec; }
+.rango.liga-3, .rango-icono.liga-3, .hs-rango.liga-3, .peldaño.liga-3 { --liga: #e3b341; }
+.rango.liga-4, .rango-icono.liga-4, .hs-rango.liga-4, .peldaño.liga-4 { --liga: #4fc3d9; }
+.rango.liga-5, .rango-icono.liga-5, .hs-rango.liga-5, .peldaño.liga-5 { --liga: #c07be0; }
+.rango.liga-6, .rango-icono.liga-6, .hs-rango.liga-6, .peldaño.liga-6 { --liga: #4ade80; }
+.rango.liga-7, .rango-icono.liga-7, .hs-rango.liga-7, .peldaño.liga-7 { --liga: #e0384f; }
+.rango.liga-8, .rango-icono.liga-8, .hs-rango.liga-8, .peldaño.liga-8 { --liga: #ffe6a3; }
+
+/* El emblema pinta con currentColor: sus degradados lo heredan de ahí. Y va con
+   halo propio, porque un trofeo apagado no es un trofeo: el halo crece con la
+   liga, así que Hierro apenas alumbra y Radiante se ve desde el otro lado de la
+   pantalla. Es lo que hace que la escalera se lea como una escalera. */
+.rango-icono[class*="liga-"] { color: var(--liga); }
+
+.rango-icono:not(.propio) {
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.55))
+          drop-shadow(0 0 var(--halo, 3px) color-mix(in srgb, var(--liga) 60%, transparent));
+}
+
+.rango-icono.liga-3 { --halo: 4px; }
+.rango-icono.liga-4 { --halo: 5px; }
+.rango-icono.liga-5 { --halo: 6px; }
+.rango-icono.liga-6 { --halo: 7px; }
+.rango-icono.liga-7 { --halo: 8px; }
+.rango-icono.liga-8 { --halo: 10px; }
+
+/* Radiante es el único que no se sostiene solo —hay que seguir ganándoselo— y
+   se nota en que su etiqueta brilla en vez de estar pintada. */
+.rango.liga-8 {
+  background: linear-gradient(100deg,
+    color-mix(in srgb, #ffd166 26%, var(--bg-elev)),
+    color-mix(in srgb, #ff8f3c 26%, var(--bg-elev)));
+  border-color: color-mix(in srgb, #ffd166 55%, transparent);
+  color: #ffe6a3;
+}
+
+/* Una imagen propia en public/rangos/ sustituye al emblema dibujado. */
+.rango-icono.propio { object-fit: contain; }
+
+/* ---- insignia de rango ----
+   El escudo hereda el color de su liga por la clase, no por el contexto: la
+   misma insignia aparece en la tarjeta de Hoy, en la lista de Hábitos, en el
+   tablón y en Progreso, y en cada sitio el color de alrededor es otro. */
+
+.rango-icono { flex: none; }
+
+.rango .rango-icono { margin-left: -0.1rem; }
+
+/* En la tarjeta de Hoy va arriba a la derecha, al lado del check. El check
+   manda —es lo que se toca—, así que la insignia se queda algo apagada hasta
+   que pasas el ratón por encima de la tarjeta. */
+.habit-top { position: relative; }
+
+.habit-rango {
+  display: grid;
+  place-items: center;
+  margin-left: auto;
+  margin-right: 0.4rem;
+  opacity: 0.9;
+  transition: opacity 0.2s var(--ease);
+}
+
+.habit-card:hover .habit-rango { opacity: 1; }
+
+.habit-rr {
+  margin-left: auto;
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--text-faint);
+}
+
+.habit-rr span { font-weight: 500; opacity: 0.6; }
+
+/* ---- la línea de rango en Progreso ---- */
+
+.hs-rango {
+  --liga: var(--text-faint);
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.hs-rango-nombre { flex: none; min-width: 8.5ch; }
+
+
+.hs-rango.sin-estrenar { font-size: 0.72rem; color: var(--text-faint); }
+.hs-rango-cara { display: grid; place-items: center; flex: none; }
+
+
+.hs-rango-nombre {
+  font-size: 0.72rem;
+  font-weight: 750;
+  color: var(--liga);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.hs-rango-alerta { color: var(--danger); font-weight: 800; margin-left: 0.35rem; }
+
+/* La barra del rango se distingue de la de constancia por el color: aquella es
+   del hábito, esta es de la liga. Son dos cosas distintas y tienen que verse
+   como dos cosas distintas. */
+.rango-track {
+  display: block;
+  flex: 1;
+  min-width: 60px;
+  height: 6px;
+}
+
+.rango-fill { display: block; height: 100%; background: var(--liga); }
+/* Los puntos ganados van en el color de la liga y con peso: son la cifra que
+   se mira en esta fila, no una anotación al margen. */
+.hs-rango-rr {
+  font-size: 0.78rem;
+  font-weight: 800;
+  color: var(--liga);
+  white-space: nowrap;
+}
+
+.hs-rango-rr span { font-size: 0.62rem; font-weight: 500; color: var(--text-faint); }
+
+/* El escalón siguiente, apagado: está ahí para decir hacia dónde, no para
+   competir con el que ya tienes. */
+.hs-siguiente {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex: none;
+  opacity: 0.45;
+  transition: opacity 0.2s var(--ease);
+}
+
+.hs-row:hover .hs-siguiente { opacity: 0.8; }
+.hs-siguiente-txt { font-size: 0.64rem; color: var(--text-dim); white-space: nowrap; }
+.hs-siguiente.cima .hs-siguiente-txt { font-style: italic; }
+
+/* ---- la escalera completa ----
+   Los nueve escalones a la vista. Los que ya se han pisado van encendidos y el
+   resto esperando: lo que motiva no es saber dónde estás, es ver cuánto queda
+   por encima y que ese cuánto tiene forma.
+
+   Cada escalón es una vitrina, no una celda de tabla: emblema grande, suelo del
+   color de su liga y nombre debajo. En un teléfono no caben nueve en fila, y
+   nueve reparte exacto en tres: o una fila de nueve o una cuadrícula de tres
+   por tres, nunca un número intermedio que deje la última fila coja. */
+
+.escalera-panel { padding: 1.1rem 1.2rem; }
+
+.escalera {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.45rem;
+}
+
+@media (min-width: 900px) {
+  .escalera { grid-template-columns: repeat(9, 1fr); }
+}
+
+.peldaño {
+  --liga: var(--text-faint);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.75rem 0.25rem 0.6rem;
+  border-radius: var(--r-md);
+  border: 1px solid transparent;
+  opacity: 0.32;
+  filter: grayscale(0.85);
+  transition: opacity 0.25s var(--ease), filter 0.25s var(--ease),
+              transform 0.25s var(--ease), box-shadow 0.25s var(--ease);
+}
+
+.peldaño.alcanzado {
+  opacity: 1;
+  filter: none;
+  border-color: color-mix(in srgb, var(--liga) 24%, transparent);
+  background: radial-gradient(115% 85% at 50% 100%,
+    color-mix(in srgb, var(--liga) 16%, transparent), transparent 72%);
+}
+
+.peldaño.alcanzado:hover { transform: translateY(-2px); }
+
+/* El escalón más alto al que has llegado lleva su propio suelo y su etiqueta:
+   en una fila de nueve iguales, saber cuál es el tuyo tiene que costar cero. */
+.peldaño.cima {
+  border-color: color-mix(in srgb, var(--liga) 60%, transparent);
+  background: radial-gradient(115% 95% at 50% 100%,
+    color-mix(in srgb, var(--liga) 30%, transparent), transparent 74%);
+  box-shadow: 0 12px 28px -16px var(--liga);
+}
+
+.peldaño.cima::after {
+  content: 'aquí';
+  position: absolute;
+  top: -0.5rem;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 0 0.4rem;
+  border-radius: 999px;
+  background: var(--liga);
+  color: #05070c;
+  font-size: 0.54rem;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  line-height: 1.25;
+}
+
+.peldaño-nombre {
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+/* El nombre lleva el color de su liga, pero tirado hacia el color de texto: en
+   Hierro el gris de la liga solo no se lee sobre el fondo. */
+.peldaño.alcanzado .peldaño-nombre {
+  color: color-mix(in srgb, var(--liga) 75%, var(--text));
+  font-weight: 800;
+}
+
+/* Cuántos hábitos tienes parados en esa liga. */
+.peldaño-cara { position: relative; display: grid; place-items: center; }
+
+.peldaño-cuenta {
+  position: absolute;
+  top: -0.35rem;
+  right: -0.6rem;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 0.25rem;
+  border-radius: 999px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  font-size: 0.6rem;
+  font-weight: 800;
+  line-height: 14px;
+  text-align: center;
+}
+
+.escalera-pie {
+  margin-top: 0.8rem;
+  padding-top: 0.7rem;
+  border-top: 1px solid var(--border);
+  font-size: 0.76rem;
+  color: var(--text-dim);
+}
+
+@media (max-width: 620px) {
+  .hs-rango { flex-wrap: wrap; }
+  .hs-siguiente { margin-left: auto; }
+}
+.hs-rango.abandonado .rango-fill { background: var(--danger); }
+
+/* ---- el tablón ---- */
+
+.tablon { margin-top: 1rem; padding-top: 0.9rem; border-top: 1px solid var(--border); }
+.tablon-title { font-size: 0.8rem; font-weight: 750; }
+.tablon-sub { font-size: 0.72rem; color: var(--text-faint); margin-top: 0.15rem; margin-bottom: 0.7rem; }
+.tablon-lista { display: flex; flex-direction: column; gap: 0.4rem; }
+
+.tablon-fila {
+  --persona: var(--accent);
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto auto;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.5rem 0.7rem;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-elev);
+}
+
+.tablon-icono {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  color: var(--text-dim);
+}
+
+.tablon-datos { display: flex; flex-direction: column; gap: 0.05rem; min-width: 0; }
+.tablon-datos b { font-size: 0.84rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tablon-regla { font-size: 0.66rem; color: var(--text-faint); }
+
+.tablon-quien {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.7rem;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.tablon-quien .casa-avatar { width: 22px; height: 22px; font-size: 0.66rem; }
+.tablon-rango { display: grid; place-items: center; min-width: 22px; }
+.tablon-unirme { padding: 0.28rem 0.7rem; font-size: 0.74rem; }
+
+/* ---- arrastrar turnos en la tabla de la casa ----
+   El agarre solo aparece en lo propio: si el cursor no cambia, nadie descubre
+   que se puede arrastrar, y si cambiara en todas las casillas prometería algo
+   que el servidor va a rechazar. */
+.casa-asignar.mia { cursor: grab; }
+.casa-asignar.mia:active { cursor: grabbing; }
+.casa-asignar.arrastrando { opacity: 0.35; }
+
+/* Los destinos válidos se encienden al empezar a arrastrar. Sin esto hay que
+   adivinar que solo se puede mover dentro de la misma fila. */
+.casa-asignar.destino {
+  border-style: dashed;
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.casa-asignar.encima {
+  border-style: solid;
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+  transform: scale(1.04);
+}
+
+@media (max-width: 620px) {
+  .tablon-fila { grid-template-columns: auto minmax(0, 1fr) auto; row-gap: 0.45rem; }
+  .tablon-quien, .tablon-unirme { grid-column: 2 / -1; justify-self: start; }
+  .tablon-rango { grid-row: 1; }
+}
+
+/* ---- retos ----
+   Cada reto es una caja con su cabecera y su tabla. La invitación se distingue
+   por el borde: es lo único de esta pantalla que pide una respuesta, y tiene
+   que verse antes que nada. */
+
+.retos-panel { margin-bottom: 1.25rem; }
+.retos-nuevo { margin-left: auto; }
+.retos-lista { display: flex; flex-direction: column; gap: 0.7rem; }
+
+.reto-caja {
+  padding: 0.85rem 0.95rem;
+  border-radius: var(--r-md);
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+}
+
+.reto-caja.invitado {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+  background: color-mix(in srgb, var(--accent) 7%, var(--surface-2));
+}
+
+.reto-caja.fuera { opacity: 0.62; }
+
+.reto-cab {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+}
+
+.reto-icono {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--r-sm);
+  background: var(--bg-elev);
+  color: var(--text-dim);
+  flex: none;
+}
+
+.reto-titulo { display: flex; flex-direction: column; gap: 0.1rem; min-width: 0; flex: 1; }
+.reto-titulo b { font-size: 0.92rem; }
+.reto-reglas { font-size: 0.68rem; color: var(--text-faint); }
+.reto-acciones { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
+.reto-acciones .btn { padding: 0.32rem 0.7rem; font-size: 0.76rem; }
+
+.reto-aviso {
+  margin-top: 0.6rem;
+  font-size: 0.76rem;
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+
+.reto-pendientes { margin-top: 0.55rem; font-size: 0.7rem; color: var(--text-faint); }
+
+.reto-tabla {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border);
+}
+
+.reto-fila {
+  --persona: var(--accent);
+  display: grid;
+  grid-template-columns: 1.3rem auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.35rem 0.4rem;
+  border-radius: var(--r-sm);
+}
+
+.reto-fila.yo { background: color-mix(in srgb, var(--persona) 10%, transparent); }
+.reto-quien { display: flex; flex-direction: column; gap: 0.05rem; min-width: 0; }
+.reto-quien b { font-size: 0.82rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.reto-racha { display: flex; flex-direction: column; align-items: flex-end; }
+.reto-racha b { font-size: 0.92rem; font-weight: 800; line-height: 1; }
+.reto-racha span { font-size: 0.6rem; color: var(--text-faint); }
+
+/* Elegir a quién retas: las caras, no una lista de nombres con casillas. */
+.reto-gente { display: flex; flex-wrap: wrap; gap: 0.45rem; }
+
+.reto-persona {
+  --persona: var(--accent);
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.35rem 0.65rem 0.35rem 0.4rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg-elev);
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: border-color 0.2s var(--ease), background 0.2s var(--ease);
+}
+
+.reto-persona:has(input:checked) {
+  border-color: var(--persona);
+  background: color-mix(in srgb, var(--persona) 14%, var(--bg-elev));
+}
+
+.reto-persona input { position: absolute; opacity: 0; pointer-events: none; }
+
+#reto-pauta-detalle { margin-top: 0.5rem; }
+
+.reto-editor {
+  margin-bottom: 0.9rem;
+  padding: 1rem 1.1rem;
+  border-radius: var(--r-md);
+  border: 1px solid var(--border-strong);
+  background: var(--bg-elev);
+}
+
+@media (max-width: 620px) {
+  .reto-fila { grid-template-columns: 1.3rem auto minmax(0, 1fr); row-gap: 0.4rem; }
+  .reto-fila .rango, .reto-racha { grid-column: 2 / -1; }
+  .reto-racha { flex-direction: row; align-items: baseline; gap: 0.3rem; }
+  .retos-nuevo { margin-left: 0; }
+}
+
+/* ---- rangos ----
+   Nueve ligas con su color, como en cualquier escalera de este tipo: el color
+   ES el rango, y por eso son los únicos nueve tonos de la app que no salen de
+   la paleta de hábitos. La cifra de la derecha es lo que falta para subir de
+   división, que es el número que de verdad se mira. */
+
+.rango {
+  --liga: var(--text-faint);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.1rem 0.45rem;
+  border-radius: var(--r-sm);
+  border: 1px solid color-mix(in srgb, var(--liga) 45%, transparent);
+  background: color-mix(in srgb, var(--liga) 14%, var(--bg-elev));
+  color: var(--liga);
+  font-size: 0.65rem;
+  font-weight: 750;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.rango b { font-weight: 800; opacity: 0.65; font-size: 0.62rem; }
+.rango.chico { margin-left: 0.4rem; padding: 0 0.32rem; font-size: 0.6rem; vertical-align: 1px; }
+
+
+/* Radiante no lleva color plano: es el único rango que no se sostiene solo, hay
+   que seguir ganándoselo, y se nota en que brilla en vez de estar pintado. */
+
+.rango.sin-estrenar { --liga: var(--text-faint); opacity: 0.7; font-weight: 600; }
+
+/* Un hábito abandonado no se esconde: parpadea despacio hasta que se retoma o
+   se borra. Es la única alarma de la app, y está para eso. */
+.rango.abandonado {
+  border-style: dashed;
+  animation: rango-abandonado 2.4s ease-in-out infinite;
+}
+
+@keyframes rango-abandonado {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
+.liga-hoy.alerta { color: var(--danger, #fb7185); font-weight: 700; }
+
+@media (prefers-reduced-motion: reduce) {
+  .rango.abandonado { animation: none; }
+}
+
+/* Etiquetas de la fila de Hábitos: público/privado, pauta y dificultad. Son
+   datos de configuración, no de progreso, así que se quedan apagadas salvo la
+   que dice que ese hábito lo está viendo la casa. */
+.habito-meta { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-top: 0.3rem; }
+
+.habito-tag {
+  padding: 0.1rem 0.4rem;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-elev);
+  color: var(--text-faint);
+  font-size: 0.65rem;
+  font-weight: 600;
+}
+
+/* La etiqueta de la hora lleva campana dentro, así que necesita alinear el
+   icono con el texto en vez de dejarlo colgando de la línea base. */
+.habito-tag.hora {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.habito-tag.hora svg { opacity: 0.8; }
+
+.habito-tag.publico {
+  border-color: color-mix(in srgb, var(--habit) 45%, var(--border));
+  color: var(--habit);
+}
+
+.publico-check {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.publico-check input { width: 16px; height: 16px; accent-color: var(--habit, var(--accent)); cursor: pointer; }
+
+#habito-pauta-detalle { margin-top: 0.5rem; }
+
+@media (max-width: 620px) {
+  /* En móvil las dos cifras no caben al lado del nombre: pasan debajo, en una
+     fila propia que ocupa el ancho de la tarjeta. */
+  .liga-fila {
+    grid-template-columns: 1.6rem auto minmax(0, 1fr);
+    row-gap: 0.55rem;
+  }
+  .liga-dato {
+    grid-column: 2 / -1;
+    flex-direction: row;
+    align-items: baseline;
+    gap: 0.35rem;
+  }
+  .liga-dato + .liga-dato { grid-column: 2 / -1; }
+}
+
+/* La etiqueta va pegada al nombre y no en una columna propia: una tarea al mes
+   sigue siendo una fila normal, solo que vuelve menos. */
+.casa-cada {
+  display: inline-block;
+  margin-left: 0.4rem;
+  padding: 0.05rem 0.35rem;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-elev);
+  color: var(--text-dim);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  vertical-align: 1px;
+}
+
+.casa-persona-cerrado {
+  font-size: 0.7rem;
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+
+/* --------------------------------------------------------------------------
+   Casa
+   El reparto de las tareas del hogar. Es la única sección que no tiene acento
+   propio, y es a propósito: aquí el color lo pone la persona. Cada avatar,
+   cada casilla y cada fila de hoy heredan --persona, y las superficies se
+   quedan en el gris neutro del resto de la app para no competir con ellos.
+   -------------------------------------------------------------------------- */
+
+.casa-hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+  background:
+    linear-gradient(150deg, rgba(255, 255, 255, 0.06), transparent 58%),
+    var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-xl);
+  padding: 1.5rem 1.75rem;
+  margin-bottom: 1.25rem;
+  box-shadow: var(--shadow-md);
+}
+
+.casa-hero-texto { min-width: 0; display: flex; flex-direction: column; gap: 0.3rem; }
+.casa-hero-acciones { display: flex; gap: 0.6rem; flex-wrap: wrap; }
+
+.casa-kicker {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  line-height: 1.4;
+}
+
+.casa-title {
+  font-size: 1.45rem;
+  font-weight: 800;
+  letter-spacing: -0.025em;
+  line-height: 1.2;
+}
+
+.casa-sub { font-size: 0.88rem; color: var(--text-dim); max-width: 52ch; }
+
+/* ---- personas ---- */
+
+.casa-personas {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 0.7rem;
+}
+
+.casa-persona {
+  --persona: var(--accent);
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--persona);
+  border-radius: var(--r-lg);
+  padding: 0.7rem 0.8rem;
+  min-width: 0;
+}
+
+.casa-persona-datos { display: flex; flex-direction: column; gap: 0.1rem; min-width: 0; flex: 1; }
+.casa-persona-nombre { font-size: 0.92rem; font-weight: 650; display: flex; align-items: center; gap: 0.4rem; }
+
+.casa-persona.yo { background: color-mix(in srgb, var(--persona) 7%, var(--surface)); }
+
+.casa-persona-yo {
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--persona);
+  border: 1px solid color-mix(in srgb, var(--persona) 45%, transparent);
+  border-radius: var(--r-full);
+  padding: 0.05rem 0.4rem;
+}
+
+.casa-persona-turnos { font-size: 0.74rem; color: var(--text-dim); }
+.casa-persona-turnos .num { color: var(--text); font-weight: 650; }
+
+.casa-persona-acciones { display: flex; align-items: center; gap: 0.3rem; flex-shrink: 0; }
+
+/* La inicial dentro de un disco del color de la persona. Es la pieza que se
+   repite en las tres partes de la sección, y lo que permite leer la tabla de
+   un vistazo sin ir contando nombres. El texto va oscuro porque todos los
+   colores de la paleta viven en la banda clara. */
+.casa-avatar {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--persona);
+  color: #08090b;
+  font-size: 0.88rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.casa-avatar.mini { width: 20px; height: 20px; font-size: 0.66rem; }
+
+.casa-vacio {
+  grid-column: 1 / -1;
+  font-size: 0.86rem;
+  color: var(--text-dim);
+  line-height: 1.6;
+  padding: 0.9rem 1rem;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--r-lg);
+}
+
+/* ---- hoy en casa ---- */
+
+.casa-hoy { display: flex; flex-direction: column; gap: 0.5rem; }
+
+.casa-hoy-item {
+  --persona: var(--text-faint);
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  width: 100%;
+  text-align: left;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--persona);
+  border-radius: var(--r-lg);
+  padding: 0.65rem 0.9rem;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  transition: background 0.2s var(--ease), border-color 0.2s var(--ease), opacity 0.25s var(--ease);
+}
+
+.casa-hoy-check {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid var(--border-strong);
+  color: transparent;
+  transition: background 0.2s var(--ease), border-color 0.2s var(--ease), color 0.2s var(--ease);
+}
+
+.casa-hoy-icono { color: var(--persona); display: grid; place-items: center; flex-shrink: 0; }
+.casa-hoy-nombre { font-size: 0.92rem; font-weight: 620; flex: 1; min-width: 0; }
+
+.casa-hoy-hora {
+  font-size: 0.8rem;
+  color: var(--text-dim);
+  padding: 0.1rem 0.45rem;
+  border-radius: var(--r-full);
+  background: var(--surface-2);
+}
+
+.casa-hoy-quien {
+  font-size: 0.78rem;
+  font-weight: 650;
+  color: var(--persona);
+  white-space: nowrap;
+}
+
+/* Hecha: el color se apaga y el círculo se llena. Se sigue leyendo qué era y
+   de quién era, que es lo que hace falta para desmarcar si te equivocaste. */
+.casa-hoy-item.hecha { opacity: 0.55; }
+.casa-hoy-item.hecha .casa-hoy-nombre { text-decoration: line-through; }
+
+.casa-hoy-item.hecha .casa-hoy-check {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #08090b;
+}
+
+/* ---- la tabla de la semana ---- */
+
+.casa-panel { padding: 0.75rem; }
+
+/* La tabla se desplaza dentro del panel, no la página: en el móvil las siete
+   columnas no caben y lo que no puede pasar es que se salgan de la vista. */
+.casa-scroll { overflow-x: auto; }
+
+.casa-tabla {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 0.85rem;
+}
+
+.casa-tabla th, .casa-tabla td { text-align: left; }
+
+.casa-tabla thead th {
+  position: sticky;
+  top: 0;
+  padding: 0.4rem 0.5rem 0.6rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+
+.casa-col-dia { text-align: center; min-width: 92px; }
+.casa-col-hora { width: 62px; }
+.casa-col-acciones { width: 72px; }
+
+/* La columna del día de hoy va marcada de arriba abajo: es la que se mira
+   primero al abrir la sección. */
+.casa-col-dia.hoy { color: var(--accent-bright); }
+
+.casa-fila > * {
+  border-top: 1px solid var(--border);
+  padding: 0.45rem 0.5rem;
+  vertical-align: middle;
+}
+
+.casa-fila:hover > * { background: rgba(255, 255, 255, 0.022); }
+
+.casa-tarea { min-width: 170px; font-weight: 400; }   /* es un th, pero se lee como celda */
+
+/* El flex va dentro y no en el propio th: un th en display:flex deja de ser
+   celda de tabla, no se estira al alto de la fila y el nombre se quedaba
+   pegado arriba mientras la hora sí se centraba. */
+.casa-tarea-in { display: flex; align-items: center; gap: 0.6rem; }
+
+.casa-tarea-icono { color: var(--text-dim); display: grid; place-items: center; flex-shrink: 0; }
+.casa-tarea-texto { display: flex; flex-direction: column; gap: 0.1rem; min-width: 0; }
+.casa-tarea-texto b { font-size: 0.88rem; font-weight: 650; }
+
+.casa-tarea-nota {
+  font-size: 0.74rem;
+  color: var(--text-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 26ch;
+}
+
+.casa-hora { color: var(--text-dim); white-space: nowrap; }
+.casa-celda.hoy { background: rgba(34, 197, 94, 0.05); }
+.casa-acciones { white-space: nowrap; text-align: right; }
+.casa-acciones .icon-btn + .icon-btn { margin-left: 0.25rem; }
+
+/* La casilla: vacía es un hueco punteado que invita a tocarla; puesta lleva el
+   color de quien se encarga. */
+.casa-asignar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  width: 100%;
+  min-height: 34px;
+  padding: 0.25rem 0.4rem;
+  border-radius: var(--r-md);
+  border: 1px dashed var(--border-strong);
+  background: transparent;
+  color: var(--text-faint);
+  font: inherit;
+  cursor: pointer;
+  transition: background 0.18s var(--ease), border-color 0.18s var(--ease), color 0.18s var(--ease);
+}
+
+.casa-asignar:hover { border-color: var(--text-faint); color: var(--text); }
+
+.casa-asignar.puesta {
+  border-style: solid;
+  border-color: color-mix(in srgb, var(--persona) 45%, transparent);
+  background: color-mix(in srgb, var(--persona) 14%, transparent);
+  color: var(--persona);
+}
+
+.casa-asignar.puesta:hover { background: color-mix(in srgb, var(--persona) 22%, transparent); }
+
+.casa-asignar-nombre {
+  font-size: 0.76rem;
+  font-weight: 650;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.casa-pie { margin-top: 0.7rem; font-size: 0.75rem; color: var(--text-faint); }
+
+/* Estado de la conexión en vivo. Va en el título de la tabla porque es de la
+   tabla de lo que habla: si esto está apagado, lo que se ve puede ser viejo. */
+.casa-sync {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-left: 0.55rem;
+  font-size: 0.66rem;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--gold);
+}
+
+.casa-sync::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.casa-sync.vivo { color: var(--accent-bright); }
+.casa-sync.vivo::before { animation: casa-latido 2.6s var(--ease) infinite; }
+
+@keyframes casa-latido {
+  0%, 70%, 100% { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.55); }
+  35% { box-shadow: 0 0 0 4px rgba(74, 222, 128, 0); }
+}
+
+/* ---- menú de la casilla ---- */
+
+/* Va colgado del body y en position: fixed porque la tabla vive dentro de un
+   contenedor con desplazamiento, y ahí dentro se recortaría contra el borde. */
+.casa-menu {
+  position: fixed;
+  z-index: var(--z-pop);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 168px;
+  max-height: 60vh;
+  overflow-y: auto;
+  padding: 5px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--glass-border);
+  background: rgba(20, 20, 20, 0.94);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  box-shadow: var(--shadow-lg);
+  animation: casa-menu-in 0.16s var(--ease);
+}
+
+@keyframes casa-menu-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: none; }
+}
+
+.casa-menu-item {
+  --persona: var(--text-faint);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.5rem;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.85rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.casa-menu-item:hover { background: var(--glass-bg-hover); }
+.casa-menu-item.activa { background: color-mix(in srgb, var(--persona) 18%, transparent); }
+.casa-menu-item.libre { color: var(--text-dim); border-top: 1px solid var(--border); border-radius: 0 0 var(--r-sm) var(--r-sm); }
+
+/* ---- editor de tarea de casa ---- */
+
+.casa-editor-fila {
+  display: grid;
+  grid-template-columns: 160px 1fr;
+  gap: 1.1rem;
+}
+
+.casa-reparto { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
+.casa-dias { display: flex; gap: 0.35rem; flex-wrap: wrap; }
+
+/* Los días son casillas de verificación disfrazadas de botones: se pulsa la
+   etiqueta entera, no un cuadradito de 13px. */
+.casa-dia-check { position: relative; cursor: pointer; }
+.casa-dia-check input { position: absolute; opacity: 0; inset: 0; cursor: pointer; }
+
+.casa-dia-check span {
+  display: grid;
+  place-items: center;
+  min-width: 42px;
+  height: 34px;
+  padding: 0 0.5rem;
+  border-radius: var(--r-md);
+  border: 1px solid var(--glass-border);
+  background: var(--glass-bg);
+  font-size: 0.78rem;
+  font-weight: 650;
+  color: var(--text-dim);
+  transition: background 0.15s var(--ease), color 0.15s var(--ease), border-color 0.15s var(--ease);
+}
+
+.casa-dia-check input:checked + span {
+  border-color: var(--accent);
+  background: var(--accent-dim);
+  color: var(--accent-bright);
+}
+
+.casa-dia-check input:focus-visible + span { outline: 2px solid var(--accent-bright); outline-offset: 2px; }
+
+/* --------------------------------------------------------------------------
+   Responsive
+   -------------------------------------------------------------------------- */
+
+/* Franja intermedia: cabe todo en una línea, pero justo. Se aprieta lo que se
+   puede apretar sin perder ninguna palabra, antes de que las pestañas tengan
+   que recurrir al desplazamiento. El umbral subió de 1240 a 1400 al entrar la
+   séptima pestaña (Casa): con seis sobraba sitio a 1280, con siete no. */
+@media (max-width: 1560px) {
+  .topbar-inner { gap: 0.7rem; padding-inline: 1rem; }
+  /* El nombre del perfil es lo primero que sobra: el avatar de color ya dice
+     quién eres, y el nombre completo sigue en el tooltip y en la pantalla de
+     cambio de perfil. */
+  .perfil-nombre { display: none; }
+  .perfil-chip { padding: 0 0.35rem; }
+  /* Solo se aprieta a los lados: el alto lo fija --barra-alto y es lo que
+     mantiene las tres cápsulas apoyadas en la misma línea. Tocarlo aquí las
+     descuadraría justo en la franja donde menos margen hay. */
+  .tab { padding-inline: 0.65rem; font-size: 0.8rem; gap: 0.32rem; }
+  .tab-work { padding-inline: 0.8rem; }
+  .saldo { font-size: 0.88rem; padding-inline: 0.6rem; gap: 0.3rem; }
+  .saldo-icon .icon { width: 18px; height: 18px; }
+  /* Encoge, no crece: el bloque de XP es lo último que aporta y lo primero
+     que puede ceder ancho. */
+  .level-meta { width: 58px; }
+  .brand h1 { font-size: 0.88rem; }
+}
+
+@media (max-width: 860px) {
+  /* Aquí sí vuelve a repartirse en filas: en móvil la línea única obligaría a
+     desplazar las pestañas siempre, y eso esconde secciones. */
+  .topbar-inner { padding: 0.75rem 1rem; gap: 0.75rem; flex-wrap: wrap; }
+  .level-chip { order: 3; flex: 1; }
+  .tabs {
+    order: 4;
+    width: 100%;
+    margin-inline: 0;   /* en su propia fila no hay nada que centrar */
+  }
+  /* La cartera se queda arriba a la derecha, junto a la marca, mientras el
+     chip de nivel y las pestañas bajan a sus propias filas. */
+  .cartera { order: 1; margin-left: auto; }
+  .perfil-chip { order: 2; }
+  main { padding: 1.5rem 1rem 4rem; }
+  .hero { flex-direction: column; align-items: flex-start; gap: 1.25rem; padding: 1.5rem; }
+  .hero-ring { align-self: center; }
+  .hs-row { grid-template-columns: 1fr; }
+  .hs-numbers { flex-wrap: wrap; }
+  .stat-tiles { grid-template-columns: repeat(2, 1fr); }
+  .calendar { grid-auto-rows: 62px; }
+  .work-stats { grid-template-columns: repeat(2, 1fr); }
+  .work-editor-fila { grid-template-columns: 1fr; }
+  .work-buscar { max-width: none; }
+  .casa-editor-fila { grid-template-columns: 1fr; }
+  .casa-personas { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 560px) {
+  body { font-size: 93.75%; }   /* 15px sobre la base del usuario, no 15px fijos */
+  .brand h1 { font-size: 1rem; }
+  .tab-text { display: none; }
+  .tab { padding: 0.5rem 0.9rem; }
+  .habit-grid { grid-template-columns: repeat(2, 1fr); gap: 0.7rem; }
+  .habit-card { padding: 0.85rem; }
+  .hero-message { font-size: 1.1rem; }
+  /* En el móvil el anillo se lleva demasiada pantalla al tamaño de escritorio;
+     baja proporcionalmente y el número con él. */
+  .hero-ring { width: 152px; height: 152px; }
+  .ring-count { font-size: 1.9rem; }
+  .month-label { min-width: 8rem; font-size: 0.9rem; }
+  .weekday-row, .calendar { gap: 4px; }
+  .day { border-radius: var(--r-sm); }
+  .day-ring { width: 20px; height: 20px; }
+  .day-ring::after { width: 14px; height: 14px; }
+  .badges-grid { grid-template-columns: repeat(2, 1fr); }
+  /* La cabecera de Work Mode se apila y el botón pasa a ocupar todo el ancho. */
+  .work-hero { padding: 1.25rem; }
+  .work-hero .btn { width: 100%; justify-content: center; }
+  .work-title { font-size: 1.25rem; }
+  /* Igual que Work Mode: la cabecera se apila y los botones ocupan el ancho. */
+  .casa-hero { padding: 1.25rem; }
+  .casa-hero-acciones { width: 100%; }
+  .casa-hero-acciones .btn { flex: 1; justify-content: center; }
+  .selector-caja { padding: 1.5rem 1.1rem; }
+  .selector-title { font-size: 1.25rem; }
+  .casa-title { font-size: 1.25rem; }
+  /* En el móvil la tabla se desplaza: las columnas se aprietan pero no se
+     encogen tanto como para que un nombre deje de leerse. */
+  .casa-col-dia { min-width: 78px; }
+  .wt-head { flex-direction: column; }
+  .wt-acciones { width: 100%; }
+  .wt-estado-sel { flex: 1; }
+  .heatmap-panel { --hm-celda: 11px; --hm-etiquetas: 26px; }
+  .habito-row { flex-wrap: wrap; }
+  .calendar { grid-auto-rows: 52px; }
+  .stat-tiles { grid-template-columns: repeat(2, 1fr); }
+  .tile-value { font-size: 1.6rem; }
+}
+
+/* --------------------------------------------------------------------------
+   Micro-interacciones
+   Nada de esto cambia lo que la app hace: solo hace que responda.
+   -------------------------------------------------------------------------- */
+
+/* Onda desde el punto pulsado, dentro de la tarjeta de hábito. */
+.ripple {
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+  background: radial-gradient(circle,
+    color-mix(in srgb, var(--habit, var(--accent)) 45%, transparent) 0%,
+    transparent 70%);
+  transform: scale(0);
+  opacity: 0.75;
+  animation: ripple-out 0.6s var(--ease) forwards;
+}
+
+@keyframes ripple-out {
+  to { transform: scale(1); opacity: 0; }
+}
+
+.habit-card { overflow: hidden; }
+
+/* Levantar la tarjeta al pasar por encima; al pulsar, se hunde. */
+.habit-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
+.habit-card:active { transform: scale(0.98); }
+
+.habit-card:hover .habit-icon { transform: scale(1.08); }
+.habit-icon { transition: transform 0.25s var(--ease-spring); }
+
+/* Desmarcar: un encogimiento corto, sin drama. */
+.habit-card.deshaciendo { animation: deshacer 0.34s var(--ease); }
+
+@keyframes deshacer {
+  0% { transform: scale(1); }
+  40% { transform: scale(0.955); }
+  100% { transform: scale(1); }
+}
+
+/* Entrada escalonada la primera vez que se pintan las listas. */
+.habit-grid.entrando .habit-card,
+.notas-container.entrando .nota-entry {
+  animation: entrada-lista 0.42s var(--ease) backwards;
+  animation-delay: calc(var(--i, 0) * 45ms);
+}
+
+@keyframes entrada-lista {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* La separación de la barra la hace el degradado de ::after, no una sombra
+   dura: material que se difumina donde se solapa con el contenido. */
+.topbar {
+  transition: background 0.3s var(--ease), border-color 0.3s var(--ease);
+}
+
+/* Pestañas y días del calendario: respuesta al pulsar. */
+.tab { transition: color 0.2s var(--ease), background 0.2s var(--ease), transform 0.12s var(--ease); }
+.tab:active { transform: scale(0.95); }
+.tab.active .tab-icon { animation: icono-entra 0.35s var(--ease-spring); }
+
+@keyframes icono-entra {
+  0% { transform: scale(0.7) rotate(-12deg); }
+  100% { transform: none; }
+}
+
+.day:hover { transform: translateY(-2px); }
+.day:active { transform: scale(0.96); }
+.day.futuro:hover, .day.empty:hover { transform: none; }   /* no son pulsables */
+
+.icon-btn { transition: background 0.18s var(--ease), color 0.18s var(--ease), border-color 0.18s var(--ease), transform 0.12s var(--ease); }
+.icon-btn:hover { transform: translateY(-1px); }
+.icon-btn:active { transform: scale(0.94); }
+
+/* --------------------------------------------------------------------------
+   Hover
+   Un solo lenguaje para todo lo que responde al ratón: levantar 2px, aclarar
+   el borde y encender una sombra. Se mueve `transform` y no el tamaño ni el
+   margen, así el hover no recoloca nada de alrededor ni obliga a recalcular
+   la maqueta. Nada de esto se aplica en pantallas táctiles, donde el hover
+   se queda pegado tras el toque.
+   -------------------------------------------------------------------------- */
+
+@media (hover: hover) {
+  /* El retardo, en un solo sitio para todo lo que reacciona al ratón. Va sobre
+     el estado :hover, así que solo cuenta al ENTRAR: la regla base no lleva
+     retardo y por eso el efecto se apaga en cuanto sales. */
+  .btn:hover,
+  .icon-btn:hover,
+  .tab:hover,
+  .seg:hover,
+  .level-chip:hover,
+  .saldo:hover,
+  .chip:hover,
+  .tile:hover,
+  .work-tile:hover,
+  .badge:hover,
+  .badge:hover .badge-icon,
+  .hs-row:hover,
+  .habito-row:hover,
+  .habit-card:hover,
+  .habit-card:hover .habit-icon,
+  .work-task:hover,
+  .nota-entry:hover,
+  .lienzo-item:hover,
+  .day:hover,
+  .week-dot:hover,
+  .hm-cell:hover,
+  .wt-log-item:hover,
+  .wt-paso:hover,
+  .tag-filtro:hover,
+  .nt-btn:hover,
+  .nt-fuente:hover,
+  .icon-option:hover,
+  .color-dot:hover,
+  .nota-destacar:hover,
+  .brand:hover .brand-mark,
+  .hero-ring:hover {
+    transition-delay: var(--hover-delay);
+  }
+
+  /* La pulsación no espera a nadie: el hover es una previsualización, pero el
+     clic es la respuesta a algo que hiciste y tiene que salir en el acto. */
+  .btn:active,
+  .icon-btn:active,
+  .tab:active,
+  .habit-card:active,
+  .day:active,
+  .lienzo-item.moviendo {
+    transition-delay: 0s;
+  }
+
+  .tile,
+  .work-tile,
+  .badge,
+  .hs-row,
+  .habito-row,
+  .work-task,
+  .nota-entry {
+    transition: transform 0.2s var(--ease), border-color 0.2s var(--ease),
+      box-shadow 0.2s var(--ease), background 0.2s var(--ease);
+  }
+
+  .tile:hover,
+  .work-tile:hover,
+  .hs-row:hover,
+  .habito-row:hover {
+    transform: translateY(-2px);
+    border-color: var(--border-strong);
+    box-shadow: var(--shadow-md);
+  }
+
+  /* Los logros conseguidos se encienden en dorado; los bloqueados solo se
+     aclaran, para no prometer lo que todavía no es tuyo. */
+  .badge:hover { transform: translateY(-3px); border-color: var(--border-strong); box-shadow: var(--shadow-md); }
+  .badge.unlocked:hover {
+    border-color: rgba(251, 191, 36, 0.6);
+    box-shadow: 0 8px 26px rgba(251, 191, 36, 0.22);
+  }
+  .badge:hover .badge-icon { transform: scale(1.06); }
+  .badge-icon { transition: transform 0.25s var(--ease-spring); }
+
+  /* Una tarea se levanta y su canto de estado se ensancha. */
+  .work-task:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); border-left-width: 5px; }
+  .work-task { transition: transform 0.2s var(--ease), box-shadow 0.2s var(--ease), border-left-width 0.2s var(--ease); }
+  .wt-toggle:hover .wt-titulo { color: var(--text); }
+
+  /* Celdas del año: la del ratón se marca sin moverse de su cuadrícula. */
+  .hm-cell { transition: outline-color 0.12s var(--ease), transform 0.12s var(--ease); outline: 1px solid transparent; }
+  .hm-cell:hover { outline-color: var(--text-dim); transform: scale(1.35); }
+
+  /* Puntos de la semana: cada uno responde por su cuenta.
+     Antes había una regla que ligaba el anillo con ellos, de forma que pasar
+     por encima del círculo verde agrandaba los siete puntos a la vez. Eran dos
+     cosas distintas moviéndose por un gesto que no las tocaba, y se leía como
+     un fallo. Ahora solo se marca el punto que está debajo del cursor. */
+  .week-dot { transition: transform 0.2s var(--ease), box-shadow 0.2s var(--ease); }
+  .week-dot:hover {
+    transform: scale(1.25);
+    box-shadow: 0 0 0 2px var(--bg), 0 0 0 3px var(--border-strong);
+  }
+
+  /* El anillo se aclara, y solo el anillo. */
+  .hero-ring { transition: filter 0.3s var(--ease); }
+  .hero-ring:hover { filter: brightness(1.1); }
+
+  /* Filas de la bitácora y pasos: fondo tenue para seguir el renglón. */
+  .wt-log-item { border-radius: var(--r-sm); transition: background 0.15s var(--ease); }
+  .wt-log-item:hover { background: var(--surface-2); }
+
+  /* Saldos del header. */
+  .saldo { transition: transform 0.2s var(--ease), border-color 0.2s var(--ease), box-shadow 0.2s var(--ease); }
+  .saldo:hover { transform: translateY(-1px); }
+  .saldo.lucky:hover { border-color: rgba(251, 191, 36, 0.6); box-shadow: 0 4px 16px rgba(251, 191, 36, 0.2); }
+  .saldo.chamba:hover { border-color: rgba(239, 68, 68, 0.6); box-shadow: 0 4px 16px rgba(239, 68, 68, 0.2); }
+
+  /* La marca gira un pelo: es lo único de la barra que no es un control. */
+  .brand-mark { transition: transform 0.35s var(--ease-spring); }
+  .brand:hover .brand-mark { transform: rotate(-6deg) scale(1.06); }
+}
+
+/* Progreso: al entrar en la vista, las cifras suben y las barras crecen. */
+.view.animando .tile {
+  animation: entrada-lista 0.4s var(--ease) backwards;
+  animation-delay: calc(var(--i, 0) * 55ms);
+}
+
+.view.animando .bar-fill { animation: barra-crece 0.85s var(--ease); }
+.view.animando .badge-fill { animation: barra-crece 0.85s var(--ease); }
+.view.animando .hs-week { animation: barra-sube 0.6s var(--ease-spring) backwards; }
+
+@keyframes barra-crece {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+
+@keyframes barra-sube {
+  from { transform: scaleY(0); }
+  to { transform: scaleY(1); }
+}
+
+.bar-fill, .badge-fill { transform-origin: left center; }
+.hs-week { transform-origin: bottom center; }
+
+/* Aviso flotante: entra y sale, en vez de aparecer y desaparecer de golpe. */
+.toast {
+  animation: none;
+  opacity: 0;
+  transform: translate(-50%, 10px);
+  transition: opacity 0.28s var(--ease), transform 0.28s var(--ease);
+}
+
+.toast.visible { opacity: 1; transform: translate(-50%, 0); }
+.toast.ok { border-color: color-mix(in srgb, var(--accent) 55%, var(--border-strong)); }
+.toast.error { border-color: color-mix(in srgb, var(--danger) 55%, var(--border-strong)); color: #fecdd3; }
+
+/* --------------------------------------------------------------------------
+   Movimiento reducido: se conservan los cambios de estado, se quitan los
+   desplazamientos y rebotes.
+   -------------------------------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  /* El lenguaje de hover levanta las piezas 2px y agranda algunas. Aquí se
+     anula el desplazamiento y se deja solo el cambio de borde y sombra: la
+     información de "esto responde al ratón" se conserva, el movimiento no.
+     La lista tiene que cubrir todo lo que mueve `transform` en el bloque de
+     hover; si allí se añade algo nuevo, también va aquí. */
+  .habit-card:active, .day:active, .btn:active,
+  .habit-card:hover, .day:hover, .tab:active, .icon-btn:hover, .icon-btn:active,
+  .nota-entry:hover,
+  .chip:hover,
+  .tile:hover,
+  .work-tile:hover,
+  .hs-row:hover,
+  .habito-row:hover,
+  .badge:hover,
+  .badge:hover .badge-icon,
+  .work-task:hover,
+  .saldo:hover,
+  .week-dot:hover,
+  .hm-cell:hover,
+  .brand:hover .brand-mark { transform: none; }
+
+  /* El retardo de entrada es una espera, no una animación: sin movimiento que
+     amortiguar solo consigue que el estado tarde en aparecer. */
+  * { transition-delay: 0s !important; }
+
+  /* Las luces siguen encendiéndose (son información: cuántos hábitos llevas),
+     pero se quedan quietas. Un fondo grande en movimiento es justo lo que hay
+     que quitar aquí; el color no. */
+  .luz { transition: opacity 0.2s linear !important; }
+  .luz::before { animation: none !important; }
+  .luz.entrando, .luz.saliendo { filter: blur(52px); transform: none; }
+}
+
+/* --------------------------------------------------------------------------
+   Transparencia reducida: el vidrio se vuelve sólido.
+   El desenfoque desaparece y las superficies suben de opacidad; la jerarquía
+   se mantiene con luminosidad y borde, que es lo que hacía el vidrio.
+   -------------------------------------------------------------------------- */
+
+@media (prefers-reduced-transparency: reduce) {
+  :root {
+    --glass-bg: #1a1a1a;
+    --glass-bg-hover: #242424;
+    --glass-bg-strong: #242424;
+    --glass-border: #3a3a3a;
+    --glass-border-hover: #4d4d4d;
+    --glass-blur: none;
+    --glass-shine: none;
+  }
+
+  body.dia-perfecto {
+    --glass-border: #a97f14;
+    --glass-border-hover: #d2a01c;
+    --glass-shine: none;
+  }
+
+  .topbar { background: #000; -webkit-backdrop-filter: none; backdrop-filter: none; }
+  .panel, .nt-panel { background: var(--surface); -webkit-backdrop-filter: none; backdrop-filter: none; }
+  .btn.primary { background: var(--accent); }
+  .levelup-overlay { background: rgba(0, 0, 0, 0.92); backdrop-filter: none; }
+
+  /* La luz ambiental es decorativa y translúcida por definición: se apaga. */
+  .ambiente { display: none; }
+  body { background-image: none; }
+}
+
+/* --------------------------------------------------------------------------
+   Contraste alto: fondos casi sólidos y bordes definidos.
+   -------------------------------------------------------------------------- */
+
+@media (prefers-contrast: more) {
+  :root {
+    --text-dim: #d4d4d8;
+    --text-faint: #b4b4bb;
+    --border: #4a4a4a;
+    --border-strong: #6a6a6a;
+    --glass-bg: #1c1c1c;
+    --glass-bg-hover: #2b2b2b;
+    --glass-border: rgba(255, 255, 255, 0.55);
+    --glass-border-hover: #ffffff;
+    --glass-blur: none;
+  }
+
+  body.dia-perfecto {
+    --glass-border: #fbbf24;
+    --glass-border-hover: #fde68a;
+  }
+
+  .topbar { background: #000; }
+  .panel { background: var(--surface); }
+  .ambiente { opacity: 0.35; }
+  .badge-desc, .tile-sub { color: var(--text-dim); }
+}
+

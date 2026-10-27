@@ -1,0 +1,8 @@
+node_modules/
+*.log
+.env
+.env.*
+# Certificado de la casa y llaves VAPID: llevan llaves privadas, se generan con `npm run cert`.
+cert/
+# Perfil de navegador que usa entrega.js para diagnosticar las notificaciones.
+brave-entrega/

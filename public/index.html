@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#08090b">
+<link rel="manifest" href="/manifest.json">
+<link rel="apple-touch-icon" href="/icono-192.png">
+<title>Metanoia</title>
+<!-- Icono de pestaña en línea: el mismo logo del acceso directo (cuadro oscuro
+     con borde verde claro y el check verde encima). Sin archivo aparte y sin
+     el 404 de /favicon.ico. -->
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 256 256'%3E%3Crect x='5' y='5' width='246' height='246' rx='58' fill='%2311151a' stroke='%2386efac' stroke-width='7'/%3E%3Cpath d='M68%20130L112%20174L190%2078' fill='none' stroke='%2322c55e' stroke-width='30' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<!-- Fuentes de Google para las notas. Si no hay internet, cada familia cae en
+     su alternativa del sistema y la app sigue funcionando igual. -->
+<!-- Archivo (100–900) es la tipografía de toda la interfaz: una grotesca ancha
+     con recorrido de peso real, que es lo que permite construir jerarquía con
+     grosor y no solo con tamaño. Va primero en la lista por ser la crítica. -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@100..900&family=Inter:wght@400;700&family=Poppins:wght@400;700&family=Nunito:wght@400;700&family=Work+Sans:wght@400;700&family=Space+Grotesk:wght@400;700&family=Playfair+Display:wght@400;700&family=Lora:wght@400;700&family=Merriweather:wght@400;700&family=Libre+Baskerville:wght@400;700&family=JetBrains+Mono:wght@400;700&family=IBM+Plex+Mono:wght@400;700&family=Caveat:wght@400;700&family=Indie+Flower&family=Dancing+Script:wght@400;700&family=Shadows+Into+Light&family=Bebas+Neue&family=Oswald:wght@400;700&display=swap">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- Capa de luz ambiental. Vive detrás de todo y no recibe eventos: es
+       material, no interfaz. renderAmbiente() le cuelga una luz por hábito
+       completado hoy, del color de ese hábito. -->
+  <div id="ambiente" class="ambiente" aria-hidden="true"></div>
+
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">
+        <!-- Mismo logo que el acceso directo del escritorio (launcher/habit-tracker.ico):
+             cuadro oscuro con borde verde claro y el check encima. Va inline para
+             que herede el tamaño y no dependa de icons.js. -->
+        <span class="brand-mark" aria-hidden="true">
+          <svg class="brand-logo" viewBox="0 0 256 256" width="32" height="32">
+            <defs>
+              <linearGradient id="brand-bg" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0" stop-color="#1b2127"/>
+                <stop offset="1" stop-color="#08090b"/>
+              </linearGradient>
+            </defs>
+            <rect x="5" y="5" width="246" height="246" rx="58"
+                  fill="url(#brand-bg)" stroke="#86efac" stroke-width="7"/>
+            <path d="M68 130 L112 174 L190 78" fill="none" stroke="#22c55e"
+                  stroke-width="30" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </span>
+        <h1>Metanoia</h1>
+      </div>
+
+      <button class="campana" id="campana" type="button" aria-label="Avisos" aria-expanded="false">
+        <span data-icon="campana" data-icon-size="18"></span>
+        <span class="campana-punto" id="campana-punto" hidden></span>
+      </button>
+      <div class="avisos" id="avisos" hidden>
+        <div class="avisos-cab">
+          <b>Avisos</b>
+          <span class="avisos-acciones">
+            <button class="btn ghost" id="avisos-probar" type="button" hidden>Probar</button>
+            <!-- Un enlace y no un botón: el navegador tiene que descargarse el
+                 archivo para que el sistema ofrezca instalarlo, y eso lo hace un
+                 enlace de verdad. Solo aparece cuando falta instalarlo. -->
+            <a class="btn primary" id="avisos-ca" href="/ca" download="metanoia-ca.crt" hidden>Instalar</a>
+            <button class="btn primary" id="avisos-permiso" type="button" hidden>Activar</button>
+          </span>
+        </div>
+        <p class="avisos-estado" id="avisos-estado" hidden></p>
+        <div class="avisos-lista" id="avisos-lista"></div>
+      </div>
+      <button class="perfil-chip" id="perfil-chip" type="button" title="Cambiar de perfil">
+        <span class="perfil-avatar" id="perfil-avatar" aria-hidden="true"></span>
+        <span class="perfil-nombre" id="perfil-nombre"></span>
+      </button>
+
+      <button class="level-chip" id="level-chip" type="button" title="Tu progreso — ver detalle">
+        <span class="level-badge" id="level-badge">1</span>
+        <span class="level-meta">
+          <span class="level-row">
+            <span class="level-label">Nivel <b id="level-num">1</b></span>
+            <span class="level-xp" id="level-xp">0 / 100 XP</span>
+          </span>
+          <span class="xp-track"><span class="xp-fill" id="xp-fill"></span></span>
+        </span>
+      </button>
+
+      <nav class="tabs" id="tabs" aria-label="Secciones">
+        <button class="tab active" data-view="hoy" type="button">
+          <span class="tab-icon" data-icon="home" data-icon-size="21"></span><span class="tab-text">Hoy</span>
+        </button>
+        <!-- Work Mode va pegado a Hoy y rompe el sistema de pestañas a
+             propósito: es el botón de "ponerse a trabajar", no una sección más.
+             Por eso el rojo, el tamaño y el punto que late cuando hay algo en
+             curso; y por eso conserva .tab, para que el conmutador de vistas lo
+             trate igual que al resto sin ningún caso especial. -->
+        <button class="tab tab-work" data-view="work" type="button">
+          <span class="tab-icon" data-icon="bolt" data-icon-size="21"></span><span class="tab-text">Work Mode</span>
+          <span class="tab-work-badge" id="work-badge" hidden></span>
+        </button>
+        <button class="tab" data-view="casa" type="button">
+          <span class="tab-icon" data-icon="limpiar" data-icon-size="21"></span><span class="tab-text">Casa</span>
+        </button>
+        <button class="tab" data-view="historial" type="button">
+          <span class="tab-icon" data-icon="calendar" data-icon-size="21"></span><span class="tab-text">Historial</span>
+        </button>
+        <button class="tab" data-view="progreso" type="button">
+          <span class="tab-icon" data-icon="chart" data-icon-size="21"></span><span class="tab-text">Progreso</span>
+        </button>
+        <button class="tab" data-view="notas" type="button">
+          <span class="tab-icon" data-icon="note" data-icon-size="21"></span><span class="tab-text">Notas</span>
+        </button>
+        <button class="tab" data-view="habitos" type="button">
+          <span class="tab-icon" data-icon="gear" data-icon-size="21"></span><span class="tab-text">Hábitos</span>
+        </button>
+      </nav>
+
+      <!-- Los dos saldos, siempre a la vista arriba a la derecha. No son
+           pestañas ni botones: son el marcador. Van juntos porque se leen de
+           un vistazo como un par, y separados por color porque son monedas
+           distintas que nunca se suman. -->
+      <div class="cartera" id="cartera">
+        <span class="saldo lucky" id="saldo-ld" title="Lucky Dollars — de tus hábitos">
+          <span class="saldo-icon" data-icon="trebol" data-icon-size="18"></span>
+          <b class="num" id="saldo-ld-num">0</b>
+        </span>
+        <span class="saldo chamba" id="saldo-cc" title="Chamba Coins — de tu trabajo">
+          <span class="saldo-icon" data-icon="reloj" data-icon-size="18"></span>
+          <b class="num" id="saldo-cc-num">0</b>
+        </span>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <!-- ---------------- HOY ---------------- -->
+    <section id="view-hoy" class="view active">
+      <div class="hero">
+        <div class="hero-ring">
+          <!-- El viewBox va holgado a propósito. El resplandor del progreso se
+               cortaba dos veces: contra el viewport del SVG (solo quedaban 3
+               unidades libres) y contra la región de filtro por defecto (±10%
+               de la caja del círculo), y se veía el borde recto de la sombra.
+               Ahora sobran ~7 unidades y el filtro declara su propia región. -->
+          <svg class="ring" viewBox="0 0 160 160" aria-hidden="true">
+            <defs>
+              <filter id="ring-glow" x="-25%" y="-25%" width="150%" height="150%">
+                <!-- flood-color se repite como atributo (respaldo) y como
+                     propiedad CSS, que es la que sigue al color del anillo. -->
+                <feDropShadow dx="0" dy="0" stdDeviation="4.5"
+                              flood-color="#22c55e" flood-opacity="0.5"/>
+              </filter>
+            </defs>
+            <circle class="ring-track" cx="80" cy="80" r="62"></circle>
+            <circle class="ring-fill" id="ring-fill" cx="80" cy="80" r="62" filter="url(#ring-glow)"></circle>
+          </svg>
+          <div class="ring-center">
+            <span class="ring-count" id="ring-count">0/0</span>
+            <span class="ring-label">de hoy</span>
+          </div>
+        </div>
+
+        <div class="hero-body">
+          <p class="hero-date" id="hero-date"></p>
+          <p class="hero-message" id="hero-message"></p>
+          <div class="hero-chips" id="hero-chips"></div>
+          <div class="hero-week">
+            <span class="hero-week-label">Últimos 7 días</span>
+            <div class="week-dots" id="week-dots"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- La casa, compitiendo. Va aquí arriba, antes de las tarjetas: es lo
+           que se mira al abrir para saber si hoy hay que ponerse. Se esconde
+           sola cuando vives solo, que es cuando no hay nada que comparar. -->
+      <section class="panel liga-panel" id="liga-caja" hidden>
+        <div class="liga-head">
+          <h2 class="liga-title">La casa</h2>
+          <span class="liga-sub">Días perfectos seguidos · solo cuentan los hábitos públicos</span>
+        </div>
+        <div class="liga-tabla" id="liga"></div>
+      </section>
+
+      <!-- Los retos: lo mismo, con otra gente. Debajo de la tabla porque la
+           tabla dice cómo va la casa y esto dice contra quién juegas. -->
+      <section class="panel retos-panel" id="retos-caja" hidden>
+        <div class="liga-head">
+          <h2 class="liga-title">Retos</h2>
+          <span class="liga-sub">Mismo hábito, mismas reglas, misma escalera</span>
+          <button class="btn ghost retos-nuevo" id="reto-nuevo-btn" type="button">Retar a alguien</button>
+        </div>
+        <div class="reto-editor" id="reto-editor" hidden></div>
+        <div class="retos-lista" id="retos-lista"></div>
+
+        <!-- El tablón: lo que ya están haciendo los demás, abierto a que te
+             unas. Va debajo de los retos porque primero está lo que ya te
+             concierne y después lo que podrías empezar. -->
+        <div class="tablon" id="tablon" hidden>
+          <h3 class="tablon-title">Hábitos abiertos de la casa</h3>
+          <p class="tablon-sub">Únete a uno y empezáis a competir en el mismo, con sus mismas reglas.</p>
+          <div class="tablon-lista" id="tablon-lista"></div>
+        </div>
+      </section>
+
+      <div id="habit-grid" class="habit-grid"></div>
+      <p class="empty-state" id="hoy-vacio" hidden>
+        Todavía no tienes hábitos. Crea el primero en la pestaña <b>Hábitos</b>.
+      </p>
+
+      <!-- Identity Shift: 30 días perfectos. Una rueda con un anillo por hábito
+           y un sector por día. Se pinta entera desde renderReto() y es solo de
+           lectura: marcar se hace en las tarjetas o en el Historial. -->
+      <section class="panel reto-panel" id="reto-panel" hidden>
+        <div class="reto-head">
+          <div class="reto-titulos">
+            <h2 class="reto-title">Identity Shift</h2>
+            <p class="reto-sub" id="reto-sub"></p>
+          </div>
+          <div class="reto-acciones">
+            <div class="reto-stats" id="reto-stats"></div>
+            <button class="btn ghost reto-reiniciar" id="reto-reiniciar" type="button">
+              <span data-icon="fire" data-icon-size="17"></span>Empezar hoy
+            </button>
+          </div>
+        </div>
+
+        <div class="reto-body">
+          <ol class="reto-leyenda" id="reto-leyenda"></ol>
+          <div class="reto-rueda" id="reto-rueda"></div>
+        </div>
+
+        <div class="reto-pie">
+          <span class="reto-key hecho"></span> Hecho
+          <span class="reto-key fallado"></span> Fallado
+          <span class="reto-key pendiente"></span> Hoy
+          <span class="reto-key futuro"></span> Por venir
+          <span class="reto-key perfecto"></span> Día perfecto
+          <span class="reto-ayuda" id="reto-ayuda"></span>
+        </div>
+      </section>
+    </section>
+
+    <!-- ---------------- WORK MODE ---------------- -->
+    <!-- Lista de trabajo, separada de los hábitos. Cada tarea es un proceso:
+         se sigue (estado, prioridad, fecha), se guía (pasos) y se documenta
+         (bitácora). -->
+    <section id="view-work" class="view">
+      <div class="work-hero">
+        <div class="work-hero-texto">
+          <p class="work-kicker">Work Mode</p>
+          <h2 class="work-title" id="work-title">Sin tareas todavía</h2>
+          <p class="work-sub" id="work-sub">Aquí va solo lo del trabajo: qué hay que hacer, por dónde vas y qué pasó en cada paso.</p>
+        </div>
+        <button id="nueva-tarea-btn" class="btn work-primary" type="button">
+          <span data-icon="plus" data-icon-size="20"></span>Nueva tarea
+        </button>
+      </div>
+
+      <div class="work-stats" id="work-stats"></div>
+
+      <div class="section-bar work-barra">
+        <div class="segmented work-filtros" id="work-filtros" role="group" aria-label="Filtrar tareas">
+          <button class="seg active" data-filtro="abiertas" type="button">Abiertas</button>
+          <button class="seg" data-filtro="en-curso" type="button">En curso</button>
+          <button class="seg" data-filtro="bloqueada" type="button">Bloqueadas</button>
+          <button class="seg" data-filtro="hecha" type="button">Hechas</button>
+          <button class="seg" data-filtro="todas" type="button">Todas</button>
+        </div>
+        <input id="work-buscar" class="notas-buscar work-buscar" type="search"
+               placeholder="Buscar en tareas, pasos y bitácora…" autocomplete="off"
+               aria-label="Buscar en tareas">
+      </div>
+
+      <div id="work-editor" class="panel editor work-editor" hidden></div>
+      <div id="work-lista" class="work-lista"></div>
+    </section>
+
+    <!-- ---------------- CASA ---------------- -->
+    <!-- El reparto de las tareas de la casa. La tabla es el plan de la semana
+         (filas = tareas, columnas = días, celdas = quién), y arriba va lo que
+         toca hoy, que es lo único que se marca. -->
+    <section id="view-casa" class="view">
+      <div class="casa-hero">
+        <div class="casa-hero-texto">
+          <p class="casa-kicker">Casa</p>
+          <h2 class="casa-title" id="casa-title">Sin tareas de casa todavía</h2>
+          <p class="casa-sub" id="casa-sub">Quién hace qué y a qué hora, para toda la semana.</p>
+        </div>
+        <div class="casa-hero-acciones">
+          <button id="nueva-persona-btn" class="btn ghost" type="button">
+            <span data-icon="persona" data-icon-size="19"></span>Añadir persona
+          </button>
+          <button id="nueva-tarea-casa-btn" class="btn primary" type="button">
+            <span data-icon="plus" data-icon-size="20"></span>Nueva tarea
+          </button>
+        </div>
+      </div>
+
+      <div id="casa-personas" class="casa-personas"></div>
+
+      <div id="casa-persona-editor" class="panel editor" hidden></div>
+      <div id="casa-tarea-editor" class="panel editor" hidden></div>
+
+      <h2 class="section-title">Hoy en casa <span class="section-count" id="casa-hoy-cuenta"></span></h2>
+      <div id="casa-hoy" class="casa-hoy"></div>
+
+      <h2 class="section-title">La semana
+        <span class="casa-sync" id="casa-sync" role="status"></span>
+      </h2>
+      <div class="panel casa-panel">
+        <div class="casa-scroll">
+          <table class="casa-tabla" id="casa-tabla"></table>
+        </div>
+        <p class="empty-state" id="casa-tabla-vacia" hidden>
+          Todavía no hay tareas de casa. Crea la primera con <b>Nueva tarea</b>.
+        </p>
+        <p class="casa-pie" id="casa-pie">Toca una casilla para elegir quién se encarga ese día. Tus turnos también se arrastran a otro día.</p>
+      </div>
+    </section>
+
+    <!-- ---------------- HISTORIAL ---------------- -->
+    <section id="view-historial" class="view">
+      <div class="section-bar">
+        <div class="month-nav">
+          <button id="mes-anterior" class="icon-btn" type="button" aria-label="Mes anterior" data-icon="left" data-icon-size="20"></button>
+          <span id="mes-actual" class="month-label"></span>
+          <button id="mes-siguiente" class="icon-btn" type="button" aria-label="Mes siguiente" data-icon="right" data-icon-size="20"></button>
+        </div>
+        <div class="segmented" id="historial-modo" role="group" aria-label="Modo de vista">
+          <button class="seg active" data-mode="mes" type="button">Mes</button>
+          <button class="seg" data-mode="matriz" type="button">Matriz</button>
+        </div>
+      </div>
+
+      <div id="historial-mes" class="panel">
+        <div class="weekday-row" id="weekday-row"></div>
+        <div id="calendar" class="calendar"></div>
+        <div id="day-detail" class="day-detail" hidden></div>
+      </div>
+
+      <div id="historial-matriz" class="panel" hidden>
+        <div id="matrix" class="matrix"></div>
+      </div>
+    </section>
+
+    <!-- ---------------- PROGRESO ---------------- -->
+    <section id="view-progreso" class="view">
+      <div class="stat-tiles" id="stat-tiles"></div>
+
+      <!-- Los rangos van primero: son el marcador. Los logros son una lista
+           larga que no cambia casi nunca, y puestos arriba dejaban la escalera
+           a tres pantallazos de scroll, así que cierran la pantalla. -->
+      <h2 class="section-title">La escalera</h2>
+      <div class="panel escalera-panel">
+        <div class="escalera" id="escalera"></div>
+        <p class="escalera-pie" id="escalera-pie"></p>
+      </div>
+
+      <h2 class="section-title">Año completo</h2>
+      <div class="panel heatmap-panel">
+        <p class="heatmap-resumen" id="heatmap-resumen"></p>
+        <div class="heatmap-scroll" id="heatmap-scroll">
+          <div class="heatmap-grid">
+            <div class="hm-months" id="hm-months"></div>
+            <div class="hm-days" id="hm-days"></div>
+            <div class="heatmap" id="heatmap"></div>
+          </div>
+        </div>
+        <div class="heatmap-legend">
+          <span>Menos</span>
+          <span class="hm-key l0"></span><span class="hm-key l1"></span><span class="hm-key l2"></span>
+          <span class="hm-key l3"></span><span class="hm-key l4"></span>
+          <span>Más</span>
+        </div>
+      </div>
+
+      <h2 class="section-title">Por hábito</h2>
+      <div id="habit-stats" class="habit-stats"></div>
+
+      <h2 class="section-title">Logros <span class="section-count" id="logros-cuenta"></span></h2>
+      <div class="badges" id="badges"></div>
+    </section>
+
+    <!-- ---------------- NOTAS ---------------- -->
+    <section id="view-notas" class="view">
+      <div class="section-bar">
+        <h2 class="section-title flush">Notas</h2>
+        <button id="nueva-nota-btn" class="btn primary" type="button">
+          <span data-icon="plus" data-icon-size="20"></span>Nueva nota
+        </button>
+      </div>
+
+      <div class="notas-barra">
+        <input id="notas-buscar" class="notas-buscar" type="search" placeholder="Buscar en tus notas…" autocomplete="off" aria-label="Buscar en tus notas">
+        <select id="notas-orden" class="notas-orden" aria-label="Ordenar notas">
+          <option value="editadas">Editadas al principio</option>
+          <option value="creadas">Creadas al principio</option>
+          <option value="alfabetico">Alfabético</option>
+        </select>
+      </div>
+
+      <div id="notas-filtro-tags" class="notas-filtro-tags"></div>
+      <p id="notas-resumen" class="notas-resumen" aria-live="polite"></p>
+      <div id="notas-container" class="notas-container"></div>
+      <datalist id="tags-existentes"></datalist>
+    </section>
+
+    <!-- ---------------- HÁBITOS ---------------- -->
+    <section id="view-habitos" class="view">
+      <div class="section-bar">
+        <h2 class="section-title flush">Tus hábitos</h2>
+        <button id="nuevo-habito-btn" class="btn primary" type="button">
+          <span data-icon="plus" data-icon-size="20"></span>Nuevo hábito
+        </button>
+      </div>
+
+      <div id="habito-editor" class="panel editor" hidden></div>
+      <div id="habitos-lista" class="habitos-lista"></div>
+    </section>
+  </main>
+
+  <div id="selector" class="selector" hidden>
+    <div class="selector-caja">
+      <span class="selector-marca" aria-hidden="true">
+        <svg viewBox="0 0 256 256" width="40" height="40">
+          <rect x="5" y="5" width="246" height="246" rx="58" fill="#11151a" stroke="#86efac" stroke-width="7"/>
+          <path d="M68 130 L112 174 L190 78" fill="none" stroke="#22c55e"
+                stroke-width="30" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </span>
+      <h2 class="selector-title" id="selector-title">¿Quién eres?</h2>
+      <p class="selector-sub" id="selector-sub"></p>
+      <div class="selector-perfiles" id="selector-perfiles"></div>
+      <div class="selector-clave" id="selector-clave" hidden></div>
+      <div class="selector-nuevo" id="selector-nuevo"></div>
+    </div>
+  </div>
+
+  <canvas id="confetti-canvas"></canvas>
+  <div id="perfect-day-flash"></div>
+  <div id="levelup-overlay" class="levelup-overlay" hidden>
+    <div class="levelup-card">
+      <span class="levelup-icon" data-icon="star" data-icon-size="44"></span>
+      <p class="levelup-title">¡Nivel <span id="levelup-num">2</span>!</p>
+      <p class="levelup-sub" id="levelup-sub"></p>
+    </div>
+  </div>
+  <div id="toast" class="toast" hidden></div>
+
+  <script src="icons.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

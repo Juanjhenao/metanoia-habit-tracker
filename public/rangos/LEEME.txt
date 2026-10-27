@@ -1,0 +1,23 @@
+Emblemas de rango propios
+=========================
+
+Deja aquí una imagen por escalón y la app la usa en lugar del emblema dibujado.
+No hay que tocar código ni reiniciar el servidor: se recarga la página y ya.
+
+Nombre del archivo = el escalón en minúsculas, sin tildes, con guion:
+
+  hierro-i.png      bronce-i.png      plata-i.png       oro-i.png
+  hierro-ii.png     bronce-ii.png     plata-ii.png      oro-ii.png
+  hierro-iii.png    bronce-iii.png    plata-iii.png     oro-iii.png
+
+  platino-i.png     diamante-i.png    ascendente-i.png  inmortal-i.png
+  platino-ii.png    diamante-ii.png   ascendente-ii.png inmortal-ii.png
+  platino-iii.png   diamante-iii.png  ascendente-iii.png inmortal-iii.png
+
+  radiante.png      (la cima no tiene division)
+
+Valen .png, .svg, .webp, .jpg y .gif. Cuadradas y con fondo transparente se ven
+mejor: se pintan a 15, 22, 24, 26 y 34 px.
+
+No hace falta ponerlas todas. Cada escalon que falte usa el emblema dibujado,
+asi que se pueden ir anadiendo de una en una.
